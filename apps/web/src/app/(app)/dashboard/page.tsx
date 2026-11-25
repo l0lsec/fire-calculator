@@ -153,11 +153,38 @@ export default async function DashboardPage({
             </Card>
           </div>
 
-          {m.warnings.map((w) => (
-            <Notice key={w.code} tone="warn">
-              {w.message}
+          {m.warnings
+            .filter((w) => !(m.access && w.code === "fi-before-59-5-traditional-heavy"))
+            .map((w) => (
+              <Notice key={w.code} tone="warn">
+                {w.message}
+              </Notice>
+            ))}
+          {m.access ? (
+            <Card title="Reaching your money before 59.5">
+              <div className="flex flex-col gap-2 text-sm text-ink-2" data-testid="access-warning">
+                <p>
+                  Your FI date is {age(m.access.gapYears)} years before 59.5, but only{" "}
+                  <span className="num font-medium text-ink">{usd(m.access.accessibleAtFI)}</span> is
+                  reachable then without penalty (cash, taxable accounts and Roth contributions). That runs
+                  out before 59.5.
+                </p>
+                {m.access.ladderFromYear !== null ? (
+                  <p>
+                    A Roth conversion ladder started at FI would cover spending from year{" "}
+                    {m.access.ladderFromYear}; the first years still need taxable savings or Roth
+                    contributions. The Rule of 55 may also apply if you leave your employer at 55 or later.
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
+          {Math.abs(m.tax.suggested - m.tax.assumed) > 0.03 ? (
+            <Notice tone="info">
+              Your account mix suggests about {pct(m.tax.suggested, 0)} tax on withdrawals; the plan assumes{" "}
+              {pct(m.tax.assumed, 0)}. You can change it on the Plan page.
             </Notice>
-          ))}
+          ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
             <Card title="Projection">

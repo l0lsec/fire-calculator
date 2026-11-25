@@ -4,6 +4,7 @@ import { retirementSpendingAt } from "@fire/engine/cashflow";
 import type { EngineWarning } from "@fire/engine/core";
 import { targetsAt } from "@fire/engine/levels";
 import { fiPortfolio, netWorth, real } from "@fire/engine/projection";
+import { accessibleFI, blendedWithdrawalTax } from "@fire/engine/withdrawal";
 import { monthName } from "@/lib/format";
 import type { HouseholdPlan, SnapshotIssue } from "../snapshot";
 
@@ -56,6 +57,15 @@ export interface DashboardModel {
   retireLabel: string | null;
   chips: { label: string; value: string }[];
   warnings: EngineWarning[];
+  /** Pre-59.5 accessibility of the FI portfolio (null when FI is at or after 59.5, or not reached). */
+  access: {
+    gapYears: number;
+    accessibleAtFI: number;
+    coveredFromYear: number | null;
+    ladderFromYear: number | null;
+  } | null;
+  /** Blended withdrawal tax implied by the account mix, versus the assumption. */
+  tax: { suggested: number; assumed: number };
 }
 
 const POLICY: Record<string, string> = {
@@ -86,6 +96,8 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
       retireLabel: null,
       chips,
       warnings: [],
+      access: null,
+      tax: { suggested: 0, assumed: a.withdrawalTaxRate },
     };
   }
   const input = plan.input;
@@ -146,9 +158,26 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
     input.spending.currentAnnual + input.debts.reduce((x, d) => x + d.escrowMonthly * 12, 0);
   const retirementSpending = retirementSpendingAt(input, fiRow?.age ?? row0.age).total;
 
+  const acc0 = accessibleFI(r);
+  let access: DashboardModel["access"] = null;
+  if (acc0.applies && !acc0.ok) {
+    // What a ladder converting a year of spending would do.
+    const yearly = (retirementSpending / (1 - a.withdrawalTaxRate)) * 1.1;
+    const withLadder = accessibleFI(r, { ladder: { annualConversion: yearly } });
+    access = {
+      gapYears: acc0.gapYears,
+      accessibleAtFI: acc0.accessibleAtFI,
+      coveredFromYear: acc0.coveredFromYear,
+      ladderFromYear: withLadder.coveredFromYear,
+    };
+  }
+  const tax = { suggested: blendedWithdrawalTax(input.accounts), assumed: a.withdrawalTaxRate };
+
   return {
     scenarioName: s.name,
     ready: true,
+    access,
+    tax,
     issues: plan.issues,
     headline: {
       fiTarget: t0.fi,
