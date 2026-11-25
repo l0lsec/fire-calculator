@@ -11,9 +11,24 @@ importers:
       '@biomejs/biome':
         specifier: 2.2.0
         version: 2.2.0
+      '@fire/db':
+        specifier: workspace:*
+        version: link:packages/db
+      '@fire/engine':
+        specifier: workspace:*
+        version: link:packages/engine
+      '@fire/plaid':
+        specifier: workspace:*
+        version: link:packages/plaid
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1
+      '@supabase/ssr':
+        specifier: 0.12.7
+        version: 0.12.7(@supabase/supabase-js@2.119.2)
+      '@supabase/supabase-js':
+        specifier: 2.119.2
+        version: 2.119.2
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
@@ -23,6 +38,9 @@ importers:
       fast-check:
         specifier: 4.9.0
         version: 4.9.0
+      postgres:
+        specifier: 3.4.9
+        version: 3.4.9
       tsx:
         specifier: 4.23.12
         version: 4.23.12

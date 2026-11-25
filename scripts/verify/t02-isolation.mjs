@@ -4,11 +4,12 @@
 import { assert, pass, run, vitest } from "./lib.mjs";
 
 vitest(
-  ["packages/db/test/db.test.ts"],
+  ["packages/db/test/db.test.ts", "packages/db/test/concurrency.test.ts"],
   [
     "a cross-household read or write through every repository function touches nothing",
     "RLS blocks API roles even when a table privilege is granted by mistake",
     "provenance keeps a user's APR when Plaid syncs again",
+    "concurrent first visits create exactly one household per user",
   ],
 );
 const self = run("node", ["scripts/guards/run-all.mjs", "--selftest"]);

@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck",
+    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck && tsc --noEmit -p e2e/tsconfig.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
@@ -19,7 +19,8 @@
     "plaid:record": "node --env-file-if-exists=.env --import tsx scripts/plaid/record-sandbox.ts",
     "db:up": "supabase start -x vector,logflare,imgproxy,supavisor,studio,postgres-meta",
     "db:down": "supabase stop",
-    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/db-migrate.ts"
+    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/db-migrate.ts",
+    "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
@@ -29,6 +30,12 @@
     "typescript": "5.9.3",
     "vitest": "4.1.10",
     "@playwright/test": "1.62.1",
-    "axe-core": "4.13.0"
+    "axe-core": "4.13.0",
+    "@fire/db": "workspace:*",
+    "@fire/engine": "workspace:*",
+    "@fire/plaid": "workspace:*",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.119.2",
+    "postgres": "3.4.9"
   }
 }

@@ -1,5 +1,5 @@
 // Households, people, income and contribution streams, spending profile, scenarios.
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { assertOwned, type Db, type HouseholdScope, isUuid } from "../db";
 import {
   contributionStreams,
@@ -29,10 +29,16 @@ export async function findHouseholdIdForUser(db: Db, userId: string): Promise<st
   return rows[0]?.householdId ?? null;
 }
 
-/** Create a household owned by a new user, with an empty spending profile. Idempotent per user. */
+/**
+ * Create a household owned by a new user, with an empty spending profile.
+ * Idempotent per user, including under concurrency: a user's first page load
+ * fires several requests at once, so creation is serialized per user with a
+ * transaction-scoped advisory lock before the existence check.
+ */
 export async function createHouseholdForUser(db: Db, userId: string, name: string): Promise<string> {
   if (!isUuid(userId)) throw new Error("user id must be a uuid");
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`household:${userId}`}))`);
     const existing = await findHouseholdIdForUser(tx as unknown as Db, userId);
     if (existing) return existing;
     const [h] = await tx.insert(households).values({ name }).returning({ id: households.id });
