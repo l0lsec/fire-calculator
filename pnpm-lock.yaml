@@ -142,6 +142,10 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+    devDependencies:
+      '@fire/plaid':
+        specifier: workspace:*
+        version: link:../plaid
 
 packages:
 

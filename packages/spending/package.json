@@ -13,5 +13,8 @@
   "dependencies": {
     "@fire/engine": "workspace:*",
     "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@fire/plaid": "workspace:*"
   }
 }
