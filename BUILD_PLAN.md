@@ -555,6 +555,7 @@ Ticket format: **Wave** (computed from dependencies, see section 14), **Depends*
 - **Deliverable:** link token endpoint, Link UI, server-side exchange, encrypted storage, first `/transactions/sync` call immediately after exchange.
 - **Gates:**
   - G1: a Sandbox Link completes and the stored token decrypts; no response body or log line contains the token. Check `node scripts/verify/t33-link.mjs`, expect `LINK_VERIFIED`.
+  - G2: against the fake Plaid API over HTTP, link token, exchange and first sync work through the app's API, and no response or log line contains the token. Check `node scripts/verify/t33-link-fake.mjs`, expect `LINK_FAKE_VERIFIED`.
 
 ### T3.4 Sync, webhooks and cron
 - **Wave:** 5
@@ -564,6 +565,7 @@ Ticket format: **Wave** (computed from dependencies, see section 14), **Depends*
 - **Gates:**
   - G1: running sync twice yields the same rows; a `removed` transaction is deleted; a mutation during pagination restarts cleanly. Check `node scripts/verify/t34-idempotent.mjs`, expect `SYNC_IDEMPOTENT_VERIFIED`.
   - G2: `/sandbox/item/fire_webhook` for `SYNC_UPDATES_AVAILABLE` results in new rows within one queue cycle; an unsigned request is rejected with 401. Check `node scripts/verify/t34-webhook.mjs`, expect `WEBHOOK_FLOW_VERIFIED`.
+  - G3: against the fake Plaid API over HTTP, a signed `SYNC_UPDATES_AVAILABLE` delivered to the running app brings new rows; unsigned, tampered and replayed requests are refused. Check `node scripts/verify/t34-webhook-fake.mjs`, expect `WEBHOOK_FLOW_FAKE_VERIFIED`.
 
 ### T3.5 Liabilities, investments and balances mapping
 - **Wave:** 6
@@ -591,6 +593,7 @@ Ticket format: **Wave** (computed from dependencies, see section 14), **Depends*
 - **Gates:**
   - G1: Sandbox `ITEM_LOGIN_REQUIRED` (via `/sandbox/item/reset_login`) flips the Item to `login_required` and update mode restores `healthy`. Check `node scripts/verify/t37-reauth.mjs`, expect `REAUTH_VERIFIED`.
   - G2: delete-my-data leaves zero rows for the household in every table except the audit tombstone. Check `node scripts/verify/t37-purge.mjs`, expect `PURGE_VERIFIED`.
+  - G3: against the fake Plaid API over HTTP, an `ITEM_LOGIN_REQUIRED` error shows Reconnect on the Connections page and `LOGIN_REPAIRED` restores Connected. Check `node scripts/verify/t37-reauth-fake.mjs`, expect `REAUTH_FAKE_VERIFIED`.
 
 ### Phase 4: Advanced planning
 

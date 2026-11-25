@@ -26,6 +26,7 @@ import { type PlanResult, runPlan } from "@fire/engine/levels";
 import { type AnnualSpending, deriveSpending, spendingWindow } from "@fire/spending";
 import { ZodError } from "zod";
 import { loadScenario, readScenario, type Scenario, type ScenarioRow } from "../scenarios";
+import { todayISO } from "../today";
 
 interface Ctx {
   db: Db;
@@ -49,9 +50,7 @@ export interface HouseholdData {
   derivedSpending: AnnualSpending | null;
 }
 
-export function todayISO(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
+export { todayISO } from "../today";
 
 export async function deriveHouseholdSpending(ctx: Ctx, asOf: string, debts?: HouseholdData["debts"]) {
   const win = spendingWindow(asOf);

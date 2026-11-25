@@ -6,7 +6,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./fake": "./src/fake/index.ts"
+    "./fake": "./src/fake/index.ts",
+    "./fake/server": "./src/fake/server.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

@@ -21,8 +21,12 @@ export function db() {
   return createClient(ENV.DATABASE_URL as string, { max: 2 });
 }
 
-export function currentMonthIndex(now = new Date()): number {
-  return now.getUTCFullYear() * 12 + now.getUTCMonth();
+/** The app's "today" during e2e runs (pinned by FIRE_AS_OF in the Playwright config). */
+export const E2E_AS_OF = "2026-11-25";
+
+export function currentMonthIndex(): number {
+  const [y, m] = E2E_AS_OF.split("-").map(Number) as [number, number];
+  return y * 12 + (m - 1);
 }
 
 export interface WorkedExample {

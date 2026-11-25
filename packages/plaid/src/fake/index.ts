@@ -33,6 +33,8 @@ interface FakeItem {
   removed: boolean;
   webhook: string | null;
   armedMutation: boolean;
+  /** Item number, used to make ids unique per Item. */
+  n: number;
 }
 
 export interface FakeOptions {
@@ -62,6 +64,8 @@ export class FakePlaid {
   private publicTokens = new Map<string, FakeItem>();
   private keys: Promise<{ kid: string; privateKey: CryptoKeyLike; jwk: Record<string, unknown> }>;
   private counter = 0;
+  /** Random per instance: ids stay unique across restarts, like real Plaid. */
+  private readonly run = crypto.randomUUID().slice(0, 8);
   private readonly deliver: NonNullable<FakeOptions["deliver"]>;
   private readonly now: () => number;
   /** Number of requests by path, for assertions. */
@@ -98,19 +102,58 @@ export class FakePlaid {
 
   // ---------- test controls ----------
 
-  /** Create an Item with the fixture household and return a public token. */
+  /**
+   * Create an Item with the fixture household and return a public token.
+   * Like real Plaid, account and transaction ids are unique per Item: each base
+   * fixture id gets an "__<run>i<n>" suffix, where <run> is random per fake
+   * instance (so restarts never reuse ids). Test helpers accept the base ids.
+   */
   createPublicToken(opts: { webhook?: string; data?: FixtureData } = {}): string {
     const n = ++this.counter;
+    const sfx = (id: string) => `${id}__${this.run}i${n}`;
+    const base = opts.data ?? fixtureData();
+    const data: FixtureData = {
+      accounts: base.accounts.map((a) => ({
+        ...a,
+        account_id: sfx(a.account_id),
+        balances: { ...a.balances },
+      })),
+      transactions: base.transactions.map((t) => ({
+        ...t,
+        transaction_id: sfx(t.transaction_id),
+        account_id: sfx(t.account_id),
+      })),
+      liabilities: {
+        credit: base.liabilities.credit.map((l) => ({
+          ...(l as object),
+          account_id: sfx((l as { account_id: string }).account_id),
+        })),
+        mortgage: base.liabilities.mortgage.map((l) => ({
+          ...(l as object),
+          account_id: sfx((l as { account_id: string }).account_id),
+        })),
+        student: base.liabilities.student.map((l) => ({
+          ...(l as object),
+          account_id: sfx((l as { account_id: string }).account_id),
+        })),
+      },
+      holdings: base.holdings.map((h) => ({
+        ...(h as object),
+        account_id: sfx((h as { account_id: string }).account_id),
+      })),
+      securities: base.securities,
+    };
     const item: FakeItem = {
-      itemId: `item_fake_${n}`,
+      itemId: `item_fake_${this.run}_${n}`,
       accessToken: `${"access-"}sandbox-fake-${n}-${crypto.randomUUID()}`,
       institutionId: FIXTURE_INSTITUTION.id,
-      data: opts.data ?? fixtureData(),
+      data,
       log: [],
       error: null,
       removed: false,
       webhook: opts.webhook ?? null,
       armedMutation: false,
+      n,
     };
     for (const t of item.data.transactions) item.log.push({ kind: "added", tx: t });
     this.items.set(item.accessToken, item);
@@ -119,8 +162,23 @@ export class FakePlaid {
     return pub;
   }
 
+  /** The Plaid item id a not-yet-exchanged public token will produce. */
+  itemIdForPublicToken(pub: string): string {
+    const item = this.publicTokens.get(pub);
+    if (!item) throw new Error("no such public token");
+    return item.itemId;
+  }
+
+  /** Per-Item id for a base fixture id ("acc_card" -> "acc_card__<run>i3"). */
+  id(itemId: string, baseId: string): string {
+    const item = this.itemByPlaidId(itemId);
+    if (!item) throw new Error("no such item");
+    return baseId.includes("__") ? baseId : `${baseId}__${this.run}i${item.n}`;
+  }
+
   itemByPlaidId(itemId: string): FakeItem | undefined {
     for (const i of this.items.values()) if (i.itemId === itemId) return i;
+    for (const i of this.publicTokens.values()) if (i.itemId === itemId) return i;
     return undefined;
   }
 
@@ -132,7 +190,12 @@ export class FakePlaid {
   addTransactions(itemId: string, txs: PlaidTransaction[]) {
     const item = this.itemByPlaidId(itemId);
     if (!item) throw new Error("no such item");
-    for (const t of txs) {
+    for (const raw of txs) {
+      const t = {
+        ...raw,
+        transaction_id: this.id(itemId, raw.transaction_id),
+        account_id: this.id(itemId, raw.account_id),
+      };
       item.data.transactions.push(t);
       item.log.push({ kind: "added", tx: t });
     }
@@ -140,7 +203,8 @@ export class FakePlaid {
 
   modifyTransaction(itemId: string, transactionId: string, patch: Partial<PlaidTransaction>) {
     const item = this.itemByPlaidId(itemId);
-    const t = item?.data.transactions.find((x) => x.transaction_id === transactionId);
+    const id = this.id(itemId, transactionId);
+    const t = item?.data.transactions.find((x) => x.transaction_id === id);
     if (!item || !t) throw new Error("no such transaction");
     Object.assign(t, patch);
     item.log.push({ kind: "modified", tx: { ...t } });
@@ -148,7 +212,8 @@ export class FakePlaid {
 
   removeTransaction(itemId: string, transactionId: string) {
     const item = this.itemByPlaidId(itemId);
-    const t = item?.data.transactions.find((x) => x.transaction_id === transactionId);
+    const id = this.id(itemId, transactionId);
+    const t = item?.data.transactions.find((x) => x.transaction_id === id);
     if (!item || !t) throw new Error("no such transaction");
     item.data.transactions = item.data.transactions.filter((x) => x.transaction_id !== transactionId);
     item.log.push({ kind: "removed", tx: t });
@@ -168,7 +233,8 @@ export class FakePlaid {
   ) {
     const item = this.itemByPlaidId(itemId);
     const list = item?.data.liabilities[kind] as Record<string, unknown>[] | undefined;
-    const row = list?.find((l) => l.account_id === accountId);
+    const id = this.id(itemId, accountId);
+    const row = list?.find((l) => l.account_id === id);
     if (!row) throw new Error("no such liability");
     Object.assign(row, patch);
   }
