@@ -87,6 +87,8 @@ describe("scenario compare", () => {
     expect(d.fiTarget).toBe(0);
     expect(d.totalInterest).toBe(0);
     expect(d.successRate).toBe(0);
+    expect(cmp.summaries[0]!.historicalStarts).toBeGreaterThan(20);
+    expect(d.historicalSuccess).toBe(0);
 
     // A real change produces non-zero deltas (the comparison is not vacuous).
     const copy = await duplicateScenario(ctx, base.id, "Spend less");

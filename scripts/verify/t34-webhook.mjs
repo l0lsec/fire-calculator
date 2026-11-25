@@ -4,5 +4,7 @@
 import { pass } from "./lib.mjs";
 import { sandboxE2E } from "./sandbox-e2e.mjs";
 
-await sandboxE2E(["a fired SYNC_UPDATES_AVAILABLE from the real Sandbox is verified and processed"]);
+await sandboxE2E(["a fired SYNC_UPDATES_AVAILABLE from the real Sandbox is verified and processed"], {
+  tunnel: true,
+});
 pass("WEBHOOK_FLOW_VERIFIED");

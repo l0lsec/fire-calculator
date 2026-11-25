@@ -11,7 +11,8 @@
     "./projection": "./src/projection/index.ts",
     "./levels": "./src/levels/index.ts",
     "./withdrawal": "./src/withdrawal/index.ts",
-    "./risk": "./src/risk/index.ts"
+    "./risk": "./src/risk/index.ts",
+    "./data/us-monthly.json": "./data/us-monthly.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

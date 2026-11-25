@@ -10,8 +10,11 @@ vitest(
     "Sandbox reset_login flips the Item to login_required",
   ],
 );
-await sandboxE2E([
-  "a fired SYNC_UPDATES_AVAILABLE from the real Sandbox is verified and processed",
-  "update mode through Plaid Link restores a reset Item to Connected",
-]);
+await sandboxE2E(
+  [
+    "a fired SYNC_UPDATES_AVAILABLE from the real Sandbox is verified and processed",
+    "update mode through Plaid Link restores a reset Item to Connected",
+  ],
+  { tunnel: true },
+);
 pass("PLAID_INTEGRATION_SANDBOX_VERIFIED");

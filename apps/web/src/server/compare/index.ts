@@ -1,8 +1,10 @@
 // Scenario comparison and invest-vs-prepay (BUILD_PLAN section 7, T4.3).
 import type { Db, HouseholdScope } from "@fire/db";
 import type { EngineInput } from "@fire/engine/core";
+import usMonthly from "@fire/engine/data/us-monthly.json";
 import { type PlanResult, runPlan } from "@fire/engine/levels";
-import { monteCarlo } from "@fire/engine/risk";
+import { horizonFor } from "@fire/engine/projection";
+import { type HistoricalSeries, historicalBacktest, monteCarlo } from "@fire/engine/risk";
 import { planForScenario, type SnapshotIssue } from "../snapshot";
 
 interface Ctx {
@@ -32,6 +34,9 @@ export interface ScenarioSummary {
   months: Record<CompareLevel, number | null>;
   totalInterest: number | null;
   successRate: number | null;
+  /** Share of historical start years (1871 onward, 60/40) in which the plan's money lasts. */
+  historicalSuccess: number | null;
+  historicalStarts: number;
   startMonth: number | null;
 }
 
@@ -44,6 +49,7 @@ export interface Comparison {
     fiTarget: number | null;
     totalInterest: number | null;
     successRate: number | null;
+    historicalSuccess: number | null;
   }[];
 }
 
@@ -71,6 +77,8 @@ export function summarize(
       months,
       totalInterest: null,
       successRate: null,
+      historicalSuccess: null,
+      historicalStarts: 0,
       startMonth: null,
     };
   }
@@ -84,11 +92,25 @@ export function summarize(
       ? monteCarlo(input, { runs, seed: 20261125, ...(result.fiK !== null ? { retireAtK: result.fiK } : {}) })
           .successRate
       : null;
+  // History replayed from every start year with enough data (horizon capped at 75 years).
+  let historicalSuccess: number | null = null;
+  let historicalStarts = 0;
+  if (result.fiK !== null) {
+    const h = historicalBacktest(input, usMonthly as HistoricalSeries, {
+      stockShare: 0.6,
+      months: Math.min(horizonFor(input), 900),
+      retireAtK: result.fiK,
+    });
+    historicalSuccess = h.runs > 0 ? h.successRate : null;
+    historicalStarts = h.runs;
+  }
   return {
     id,
     name,
     isBaseline,
     ready: true,
+    historicalSuccess,
+    historicalStarts,
     issues,
     fiTarget: result.levels.fi,
     months,
@@ -112,6 +134,7 @@ export function deltas(summaries: ScenarioSummary[]): Comparison["deltas"] {
     fiTarget: diff(base.fiTarget, s.fiTarget),
     totalInterest: diff(base.totalInterest, s.totalInterest),
     successRate: diff(base.successRate, s.successRate),
+    historicalSuccess: diff(base.historicalSuccess, s.historicalSuccess),
   }));
 }
 

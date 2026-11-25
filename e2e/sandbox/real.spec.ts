@@ -18,13 +18,14 @@ const plaid = new PlaidClient({
   secret: ENV.PLAID_SECRET as string,
   env: "sandbox",
 });
-const webhook = `${process.env.E2E_TUNNEL_URL}/api/plaid/webhook`;
+const tunnel = process.env.E2E_TUNNEL_URL ?? "";
+const webhook = tunnel ? `${tunnel}/api/plaid/webhook` : "";
 
 async function linkedUser(page: Page, context: Parameters<typeof signInContext>[0], baseURL: string) {
   const user = await createVerifiedUser();
   await signInContext(context, user, baseURL);
   await page.goto("/dashboard");
-  const pub = await plaid.sandboxPublicTokenCreate("ins_109508", { webhook });
+  const pub = await plaid.sandboxPublicTokenCreate("ins_109508", webhook ? { webhook } : {});
   const ex = await page.request.post("/api/plaid/link/exchange", {
     data: { public_token: pub.public_token, institution: { id: "ins_109508", name: "First Platypus Bank" } },
   });
@@ -50,6 +51,7 @@ test("a fired SYNC_UPDATES_AVAILABLE from the real Sandbox is verified and proce
   context,
   baseURL,
 }) => {
+  test.skip(!tunnel, "needs a public tunnel (FIRE_ALLOW_TUNNEL=1)");
   const { scope, item, token } = await linkedUser(page, context, baseURL as string);
   const unsigned = await page.request.post("/api/plaid/webhook", {
     data: { webhook_type: "TRANSACTIONS", webhook_code: "SYNC_UPDATES_AVAILABLE", item_id: item.plaidItemId },

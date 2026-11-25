@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// T3.7 G1 (real Plaid Sandbox): /sandbox/item/reset_login flips the Item to login_required,
-// and update mode through Plaid Link restores healthy. Needs sandbox keys and ngrok.
+// T3.7 G1 (real Plaid Sandbox, local only): /sandbox/item/reset_login flips the Item to
+// login_required, and update mode through Plaid Link restores healthy. Needs sandbox keys.
 import { pass, vitest } from "./lib.mjs";
 import { sandboxE2E } from "./sandbox-e2e.mjs";
 

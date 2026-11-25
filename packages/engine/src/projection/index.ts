@@ -237,7 +237,7 @@ export function project(input: EngineInput, opts: ProjectionOptions = {}): Proje
       );
     }
 
-    const f = flowsAt(input, k, retired);
+    const f = flowsAt(input, k, retired, opts.path ? deflator : undefined);
     const reserve = reserveFor(f.essentialExpenses);
     let debtPayment: number;
     let debtBalance: number;

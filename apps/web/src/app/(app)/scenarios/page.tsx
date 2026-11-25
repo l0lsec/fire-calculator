@@ -134,6 +134,16 @@ export default async function ScenariosPage({
                   </td>
                 ))}
               </tr>
+              <tr className="border-b border-line">
+                <td className="py-2">Retirement success (history since 1871)</td>
+                {cmp.summaries.map((s) => (
+                  <td key={s.id} className="num py-2" data-testid="historical-success">
+                    {s.historicalSuccess === null
+                      ? ""
+                      : `${pct(s.historicalSuccess, 0)} of ${s.historicalStarts} start years`}
+                  </td>
+                ))}
+              </tr>
               <tr>
                 <td className="py-2">Retirement success (simulated)</td>
                 {cmp.summaries.map((s) => (

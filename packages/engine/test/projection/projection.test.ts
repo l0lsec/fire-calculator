@@ -230,3 +230,22 @@ describe("performance", () => {
     expect(per).toBeLessThan(50);
   });
 });
+
+describe("return paths", () => {
+  it("with a return path, inflation-linked spending follows the path's realized prices, not the assumption", () => {
+    const input = parseEngineInput(
+      exampleInput({ assumptions: { ...exampleInput().assumptions, inflation: 0.03 } }),
+    );
+    const m = 1.1 ** (1 / 12) - 1; // 10% a year actual inflation
+    const path = {
+      invested: Array.from({ length: 24 }, () => 0),
+      inflation: Array.from({ length: 24 }, () => m),
+    };
+    const p = project(input, { path, neverRetire: true, horizonMonths: 24 });
+    expect(p.rows[12]!.deflator).toBeCloseTo(1.1, 9);
+    expect(p.rows[12]!.livingExpenses).toBeCloseTo((60000 / 12) * 1.1, 6);
+    // Without a path the assumption applies.
+    const q = project(input, { neverRetire: true, horizonMonths: 24 });
+    expect(q.rows[12]!.livingExpenses).toBeCloseTo((60000 / 12) * 1.03, 6);
+  });
+});

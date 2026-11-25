@@ -18,7 +18,9 @@ export function buildSeries(csv) {
   const iD = col("Dividend");
   const iCpi = col("Consumer Price Index");
   const iY = col("Long Interest Rate");
-  const rows = lines
+  // Use the contiguous run of complete rows from the start: the newest months
+  // are published with zeros for dividend, CPI and rate until data arrives.
+  const parsed = lines
     .slice(1)
     .map((l) => l.split(","))
     .map((c) => ({
@@ -27,8 +29,13 @@ export function buildSeries(csv) {
       d: Number(c[iD]),
       cpi: Number(c[iCpi]),
       y: Number(c[iY]) / 100,
-    }))
-    .filter((r) => r.p > 0 && r.cpi > 0 && Number.isFinite(r.d) && r.y > 0);
+    }));
+  const complete = (r) => r.p > 0 && r.d > 0 && r.cpi > 0 && r.y > 0;
+  const end = parsed.findIndex((r) => !complete(r));
+  const rows = end < 0 ? parsed : parsed.slice(0, end);
+  const later = end < 0 ? [] : parsed.slice(end);
+  if (later.some(complete))
+    throw new Error(`gap in the data at ${parsed[end].date}: complete rows follow incomplete ones`);
   const dur = (y) => (1 - (1 + y) ** -10) / y;
   const stocks = [];
   const bonds = [];
@@ -40,7 +47,7 @@ export function buildSeries(csv) {
     bonds.push(a.y / 12 - dur(a.y) * (b.y - a.y));
     inflation.push(b.cpi / a.cpi - 1);
   }
-  return { start: rows[1].date, stocks, bonds, inflation };
+  return { start: rows[1].date, end: rows[rows.length - 1].date, stocks, bonds, inflation };
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {

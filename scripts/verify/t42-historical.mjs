@@ -17,4 +17,8 @@ vitest(
     "rolling starts use the series in order and report failing start years",
   ],
 );
+vitest(
+  ["packages/engine/test/projection/projection.test.ts"],
+  ["with a return path, inflation-linked spending follows the path's realized prices, not the assumption"],
+);
 pass("HISTORICAL_VERIFIED");

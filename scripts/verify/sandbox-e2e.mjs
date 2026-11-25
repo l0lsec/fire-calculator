@@ -1,7 +1,9 @@
-// Real-Sandbox end-to-end runner: opens a temporary ngrok tunnel to the local
-// app so Plaid can deliver real webhooks, runs e2e/sandbox specs, and closes
-// the tunnel. The tunnel exposes only the local app, whose routes require an
-// MFA session (the webhook route requires a valid Plaid signature).
+// Real-Sandbox end-to-end runner. Runs fully locally by default: Link, sync,
+// re-login errors and Plaid Link update mode need no inbound connection.
+// Only real webhook delivery needs Plaid to reach the app, which requires a
+// temporary public tunnel (ngrok); that runs only with { tunnel: true } AND
+// the owner's explicit opt-in (FIRE_ALLOW_TUNNEL=1). The tunnel exposes only
+// the local app, whose routes need an MFA session or a valid Plaid signature.
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -43,14 +45,22 @@ async function openTunnel(port) {
   return { url, close: () => child.kill("SIGTERM") };
 }
 
-export async function sandboxE2E(requireTitles) {
+export async function sandboxE2E(requireTitles, { tunnel: wantTunnel = false } = {}) {
   assert(sandboxKeysPresent(), "needs PLAID_CLIENT_ID and PLAID_SECRET (sandbox) in .env");
+  if (wantTunnel) {
+    assert(
+      process.env.FIRE_ALLOW_TUNNEL === "1",
+      "real webhook delivery needs a temporary public tunnel; set FIRE_ALLOW_TUNNEL=1 to allow it",
+    );
+  }
   ensureBuilt();
-  let tunnel;
-  try {
-    tunnel = await openTunnel(SANDBOX_PORT);
-  } catch (e) {
-    fail(`could not open an ngrok tunnel for Plaid webhooks: ${e.message}`);
+  let tunnel = { url: "", close: () => {} };
+  if (wantTunnel) {
+    try {
+      tunnel = await openTunnel(SANDBOX_PORT);
+    } catch (e) {
+      fail(`could not open an ngrok tunnel for Plaid webhooks: ${e.message}`);
+    }
   }
   try {
     const r = run(

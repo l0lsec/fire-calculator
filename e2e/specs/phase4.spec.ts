@@ -50,6 +50,7 @@ test("scenarios render success rates and a traditional-heavy early FI shows the 
   await page.goto("/scenarios");
   await expect(page.getByTestId("compare-table")).toBeVisible();
   await expect(page.getByTestId("success-rate").first()).toHaveText(/^\d{1,3}%$/);
+  await expect(page.getByTestId("historical-success").first()).toHaveText(/^\d{1,3}% of \d+ start years$/);
 });
 
 test("the JSON export downloads the plan without any tokens", async ({ page, context, baseURL }) => {

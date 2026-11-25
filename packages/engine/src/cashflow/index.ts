@@ -99,12 +99,20 @@ export interface MonthFlows {
   escrow: number;
 }
 
-export function flowsAt(input: EngineInput, k: number, retired: boolean): MonthFlows {
+/**
+ * Cash flows for month k. `priceLevel` is the cumulative price index at the end
+ * of month k; it defaults to the constant inflation assumption and is supplied
+ * by the projection when a return path carries realized inflation (historical
+ * or Monte Carlo runs), so inflation-linked amounts follow actual prices.
+ */
+export function flowsAt(input: EngineInput, k: number, retired: boolean, priceLevel?: number): MonthFlows {
+  const grow = (g: GrowthKind) =>
+    g === "inflation" && priceLevel !== undefined ? priceLevel : growthFactor(input, g, k);
   let income = 0;
   let guaranteedIncome = 0;
   for (const s of input.income) {
     if (!streamActive(input, s, k, retired)) continue;
-    const amt = s.monthly * growthFactor(input, s.growth, k);
+    const amt = s.monthly * grow(s.growth);
     income += amt;
     if (GUARANTEED.has(s.kind)) guaranteedIncome += amt;
   }
@@ -113,13 +121,13 @@ export function flowsAt(input: EngineInput, k: number, retired: boolean): MonthF
   let contributionTotal = 0;
   if (!retired) {
     for (const c of input.contributions as ContributionStream[]) {
-      const amt = c.monthly * growthFactor(input, c.growth, k);
+      const amt = c.monthly * grow(c.growth);
       contributions[c.bucket] = (contributions[c.bucket] ?? 0) + amt;
       contributionTotal += amt;
     }
   }
 
-  const infl = growthFactor(input, "inflation", k);
+  const infl = grow("inflation");
   const escrow = escrowMonthly(input) * infl;
   let livingExpenses: number;
   let essentialExpenses: number;
