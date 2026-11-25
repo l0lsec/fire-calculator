@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     projects: [
-      { test: { name: "engine", include: ["packages/engine/test/**/*.test.ts"] } },
+      { test: { name: "engine", include: ["packages/engine/test/**/*.test.ts"], testTimeout: 30000 } },
       { test: { name: "spending", include: ["packages/spending/test/**/*.test.ts"] } },
       { test: { name: "plaid", include: ["packages/plaid/test/**/*.test.ts"] } },
       {

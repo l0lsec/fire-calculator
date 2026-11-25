@@ -66,7 +66,7 @@ describe("escrow", () => {
         ],
       }),
     );
-    expect(flowsAt(input, 13, false).escrow).toBeCloseTo(412, 9);
+    expect(flowsAt(input, 12, false).escrow).toBeCloseTo(412, 9);
   });
 });
 
@@ -138,8 +138,8 @@ describe("windows", () => {
         contributions: [{ id: "k401", name: "401(k)", bucket: "traditional", monthly: 1000 }],
       }),
     );
-    expect(flowsAt(withContrib, 1, false).contributions.traditional).toBe(1000);
-    expect(flowsAt(withContrib, 13, false).contributions.traditional).toBeCloseTo(1050, 9);
+    expect(flowsAt(withContrib, 1, false).contributions.traditional).toBeCloseTo(1000 * 1.05 ** (1 / 12), 9);
+    expect(flowsAt(withContrib, 12, false).contributions.traditional).toBeCloseTo(1050, 9);
     expect(flowsAt(withContrib, 13, true).contributionTotal).toBe(0);
   });
 });

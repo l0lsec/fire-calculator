@@ -1,8 +1,9 @@
 // Time-varying cash flows (BUILD_PLAN sections 6 and 9).
 //
-// Every stream is stated in today's dollars and grown to nominal dollars for
-// the month it falls in. Month k (1-based) uses the growth factor at k - 1, so
-// the first simulated month pays exactly the stated amount.
+// Every stream is stated in today's dollars and paid at the END of the month it
+// falls in, in that month-end's prices: month k (1-based) uses the growth factor
+// at k / 12 years. This is the convention under which a nominal run deflated by
+// cumulative inflation equals a run in real terms exactly (T1.4 G1).
 //
 // Escrow (property tax, homeowners insurance) is taken from mortgage debts and
 // treated as a permanent essential expense: it continues after the loan's
@@ -14,7 +15,7 @@ import { ageAt } from "../core";
 export type GrowthKind = "raise" | "inflation" | "none";
 
 export function growthFactor(input: EngineInput, growth: GrowthKind, k: number): number {
-  const years = Math.max(0, k - 1) / 12;
+  const years = Math.max(0, k) / 12;
   switch (growth) {
     case "raise":
       return (1 + input.assumptions.raiseRate) ** years;
