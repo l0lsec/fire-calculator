@@ -22,7 +22,7 @@ Scope: a complete, ticketed build plan for a FIRE calculator with debt paydown, 
 - [x] G4: every ticket declares Depends, Owns and at least one gate with a success token; dependencies reference real tickets and the graph is acyclic; tickets in the same wave own disjoint paths
   CHECK: node scripts/verify-plan.mjs tickets
   EXPECT: TICKETS_VERIFIED
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=<repo>; path=cac86490b0a1/25 entries; output=tickets=26 waves=8 gates=54 | TICKETS_VERIFIED
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=<repo>; path=cac86490b0a1/25 entries; output=tickets=26 waves=8 gates=58 | TICKETS_VERIFIED
 
 - [x] G5: the plan names the Plaid endpoints and webhooks it relies on, and the spending rules that prevent double counting
   CHECK: node scripts/verify-plan.mjs plaid

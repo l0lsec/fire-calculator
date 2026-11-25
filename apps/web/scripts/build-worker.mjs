@@ -5,6 +5,12 @@
 // hold Plaid secrets and the token encryption key, so after building we blank
 // that module, delete copied .env files, and scan the output for every
 // sensitive value the local env files contain. Any hit fails the build.
+//
+// NEXT_PUBLIC_* values are public by design (Next inlines them into browser
+// code), so they are not secrets; but they are baked in at build time, so a
+// `--production` build refuses to run with the local Supabase stack's URL.
+// Set the production NEXT_PUBLIC_* values in the environment when deploying
+// (environment variables override .env files).
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -12,6 +18,18 @@ import path from "node:path";
 const OUT = ".open-next";
 const ENV_MODULE = path.join(OUT, "cloudflare", "next-env.mjs");
 const SENSITIVE = /SECRET|KEY|PASSWORD|TOKEN|DATABASE_URL/i;
+const PUBLIC = /^NEXT_PUBLIC_/;
+
+if (process.argv.includes("--production")) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  if (!/^https:\/\//.test(url) || /127\.0\.0\.1|localhost/.test(url)) {
+    console.error("build-worker --production: set NEXT_PUBLIC_SUPABASE_URL (https, production project) and");
+    console.error(
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY in the environment; refusing to bake the local stack into the bundle.",
+    );
+    process.exit(1);
+  }
+}
 const SCRUBBED = "export const production = {};\nexport const development = {};\nexport const test = {};\n";
 
 function parseDotenv(file) {
@@ -60,7 +78,7 @@ for (const f of [
   "../../.env",
 ]) {
   for (const [k, v] of Object.entries(parseDotenv(f))) {
-    if (SENSITIVE.test(k) && v.length >= 12) values.set(`${f}:${k}`, v);
+    if (SENSITIVE.test(k) && !PUBLIC.test(k) && v.length >= 12) values.set(`${f}:${k}`, v);
   }
 }
 const hits = [];

@@ -9,7 +9,7 @@
     "start": "next start --port 3100",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:worker": "node scripts/build-worker.mjs",
-    "deploy": "node scripts/build-worker.mjs && wrangler deploy"
+    "deploy": "node scripts/build-worker.mjs --production && wrangler deploy"
   },
   "dependencies": {
     "@fire/db": "workspace:*",

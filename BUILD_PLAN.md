@@ -2,7 +2,7 @@
 
 **Audience:** you, and Claude Code (or another coding agent) working ticket by ticket under `/unlazy` gates
 **Target:** a web app that pulls balances, debts and spending from Plaid, plans debt paydown, and projects every FI level (Lean, FI, Fat, Barista, Coast) with dates
-**Status:** plan only; no code exists yet. Date of plan: 2026-11-25
+**Status:** built on branch `build/fire-v1`; see `docs/VERIFICATION.md` for gate results. Date of plan: 2026-11-25
 
 ---
 
@@ -51,7 +51,7 @@ Chosen to match what you already run (another project, another project): Next.js
 
 | Layer | Choice | Why |
 |---|---|---|
-| Framework | Next.js 15 App Router, TypeScript strict | One repo for UI, API routes and server actions |
+| Framework | Next.js 16 App Router (16.3.8, the patch OpenNext 1.20.6 requires), TypeScript strict | One repo for UI, API routes and server actions |
 | Hosting | Cloudflare Workers via `@opennextjs/cloudflare` | Your existing deploy path; Cron Triggers and Queues for sync |
 | Database | Postgres (Supabase) through Cloudflare Hyperdrive | Relational data, RLS as defense in depth |
 | ORM | Drizzle + `postgres` driver | Typed schema, plain SQL migrations |
@@ -61,7 +61,7 @@ Chosen to match what you already run (another project, another project): Next.js
 | Background work | Cloudflare Queues (webhook fan-in) + Cron Trigger (daily safety sync) | Webhook handler returns 200 fast; sync runs with retries |
 | Charts | Recharts | Line, area and stacked bar cover every view here |
 | UI | Tailwind 4 + Radix primitives | Matches another project |
-| Tests | vitest, fast-check (property tests), Playwright (e2e against Plaid Sandbox), axe-core | Same as another project |
+| Tests | vitest, fast-check (property tests), PGlite (in-process Postgres for DB tests), Playwright (e2e against a fake Plaid API over HTTP, and against the real Plaid Sandbox through an ngrok tunnel), axe-core | Same as another project; PGlite and the fake API keep most suites hermetic |
 | Lint/format | Biome, plus repo guard scripts | Matches another project |
 
 **Deliberate omissions:** no Redis, no separate job service, no Plaid Node SDK, no client-side storage of financial data beyond the rendered page.
