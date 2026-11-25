@@ -16,7 +16,10 @@
     "dev": "pnpm --filter @fire/web dev",
     "build": "pnpm --filter @fire/web build",
     "gates": "node ~/.claude/skills/unlazy/scripts/gate-check.mjs --status",
-    "plaid:record": "node --env-file-if-exists=.env --import tsx scripts/plaid/record-sandbox.ts"
+    "plaid:record": "node --env-file-if-exists=.env --import tsx scripts/plaid/record-sandbox.ts",
+    "db:up": "supabase start -x vector,logflare,imgproxy,supavisor,studio,postgres-meta",
+    "db:down": "supabase stop",
+    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/db-migrate.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",

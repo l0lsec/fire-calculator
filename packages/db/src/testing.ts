@@ -2,8 +2,8 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { MIGRATIONS_DIR } from "./client";
 import type { Db } from "./db";
+import { MIGRATIONS_DIR } from "./migrate";
 import * as schema from "./schema";
 
 export interface TestDb {

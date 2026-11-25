@@ -1,0 +1,122 @@
+// Small, shared UI primitives. Tokens come from globals.css.
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+
+type Variant = "primary" | "secondary" | "ghost" | "danger";
+
+const variants: Record<Variant, string> = {
+  primary: "bg-accent text-accent-ink hover:opacity-90",
+  secondary: "bg-surface text-ink border border-line hover:bg-surface-2",
+  ghost: "text-ink-2 hover:bg-surface-2",
+  danger: "bg-bad text-white hover:opacity-90",
+};
+
+export function Button({
+  variant = "primary",
+  className = "",
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      {...rest}
+    />
+  );
+}
+
+export function Field({
+  label,
+  hint,
+  error,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: ReactNode;
+  error?: string | undefined;
+  htmlFor: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-ink">
+        {label}
+      </label>
+      {children}
+      {hint && !error ? <p className="text-xs text-ink-3">{hint}</p> : null}
+      {error ? (
+        <p className="text-xs text-bad" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function Input({ className = "", ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={`min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent ${className}`}
+      {...rest}
+    />
+  );
+}
+
+export function Select({ className = "", children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={`min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent ${className}`}
+      {...rest}
+    >
+      {children}
+    </select>
+  );
+}
+
+export function Card({
+  title,
+  action,
+  children,
+  className = "",
+}: {
+  title?: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`rounded-2xl border border-line bg-surface p-5 ${className}`}>
+      {title || action ? (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          {title ? <h2 className="text-base font-semibold text-ink">{title}</h2> : <span />}
+          {action}
+        </div>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
+export function Notice({
+  tone = "info",
+  children,
+}: {
+  tone?: "info" | "warn" | "bad" | "good";
+  children: ReactNode;
+}) {
+  const tones = {
+    info: "bg-surface-2 text-ink-2",
+    warn: "bg-warn-soft text-warn",
+    bad: "bg-bad-soft text-bad",
+    good: "bg-accent-soft text-accent",
+  } as const;
+  return <div className={`rounded-lg px-3 py-2 text-sm ${tones[tone]}`}>{children}</div>;
+}
+
+export function Disclaimer() {
+  return (
+    <p className="text-xs text-ink-3">
+      Estimates for education and planning, based on your assumptions. Not financial advice.
+    </p>
+  );
+}

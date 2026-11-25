@@ -11,7 +11,7 @@
       "binding": "HYPERDRIVE",
       // Replaced with the real Hyperdrive id at cutover (docs/RUNBOOK.md).
       "id": "00000000000000000000000000000000",
-      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:55322/postgres"
+      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:58322/postgres"
     }
   ],
   "queues": {

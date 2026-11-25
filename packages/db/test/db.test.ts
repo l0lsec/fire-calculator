@@ -180,7 +180,7 @@ describe("household isolation", () => {
     B = await seed("B");
   });
 
-  const own = (row: { householdId?: string } | null | undefined, s: Seeded) =>
+  const own = (row: { householdId?: string | null } | null | undefined, s: Seeded) =>
     row === null || row === undefined || row.householdId === s.scope.householdId;
 
   // Every scoped repository function, exercised with household B's scope
