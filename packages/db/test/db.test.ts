@@ -415,6 +415,7 @@ describe("household isolation", () => {
     "scopeFor",
     "assertOwned",
     "isUuid",
+    "databaseReachable",
   ]);
 
   it("a cross-household read or write through every repository function touches nothing", async () => {

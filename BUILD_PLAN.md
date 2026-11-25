@@ -649,6 +649,7 @@ Ticket format: **Wave** (computed from dependencies, see section 14), **Depends*
 - **Deliverable:** Playwright flows: onboarding manual, onboarding with Plaid, review spending, change debt strategy, re-auth, disconnect.
 - **Gates:**
   - G1: all e2e flows pass against Sandbox on a clean database. Check `node scripts/verify/t52-e2e.mjs`, expect `E2E_VERIFIED`.
+  - G2: on a clean database, every e2e flow passes against the fake Plaid API: onboarding (manual and with a bank), spending review, debt strategy, re-auth, disconnect, delete. Check `node scripts/verify/t52-e2e-fake.mjs`, expect `E2E_FAKE_VERIFIED`.
 
 ### T5.3 Plaid Trial cutover and runbook
 - **Wave:** 8

@@ -1,6 +1,6 @@
 // Real Plaid Sandbox. Runs only when sandbox keys are in .env; the gates that
 // name the Sandbox require these tests to PASS (a skip fails the gate).
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createHouseholdForUser, getItem, scopeFor } from "@fire/db";
 import { generateKeySpec, loadKeyring, open, tokenAad } from "@fire/db/crypto";
 import { createTestDb, type TestDb } from "@fire/db/testing";
@@ -10,8 +10,9 @@ import type { PlaidDeps } from "../src/server/plaid/config";
 import { exchangePublicToken } from "../src/server/plaid/link";
 import { syncItem } from "../src/server/plaid/sync";
 
+const envFile = new URL("../../../.env", import.meta.url);
 const env = Object.fromEntries(
-  readFileSync(new URL("../../../.env", import.meta.url), "utf8")
+  (existsSync(envFile) ? readFileSync(envFile, "utf8") : "")
     .split("\n")
     .filter((l) => /^[A-Z_]+=/.test(l))
     .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),

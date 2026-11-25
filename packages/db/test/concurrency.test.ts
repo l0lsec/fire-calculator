@@ -1,19 +1,25 @@
 // Runs against the local Supabase Postgres (pnpm db:up): PGlite has a single
 // connection and cannot reproduce races.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import { createHouseholdForUser, findHouseholdIdForUser } from "../src";
 import { createClient } from "../src/client";
 
-const url = readFileSync(new URL("../../../.env", import.meta.url), "utf8")
-  .split("\n")
-  .find((l) => l.startsWith("DATABASE_URL="))
-  ?.slice("DATABASE_URL=".length);
+const envFile = new URL("../../../.env", import.meta.url);
+const url =
+  process.env.DATABASE_URL ??
+  (existsSync(envFile)
+    ? readFileSync(envFile, "utf8")
+        .split("\n")
+        .find((l) => l.startsWith("DATABASE_URL="))
+        ?.slice("DATABASE_URL=".length)
+    : undefined);
 
 const client = createClient(url ?? "postgres://invalid", { max: 10 });
 afterAll(() => client.close());
 
-describe("concurrency", () => {
+// Skipped where no local stack exists (CI); its gate requires it to pass.
+describe.skipIf(!url)("concurrency", () => {
   it("concurrent first visits create exactly one household per user", async () => {
     expect(url, "DATABASE_URL must point at the local stack").toBeTruthy();
     const userId = crypto.randomUUID();

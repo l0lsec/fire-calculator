@@ -6,9 +6,10 @@ import * as emdash from "./emdash.mjs";
 import { repoFiles } from "./lib.mjs";
 import * as purity from "./purity.mjs";
 import * as scope from "./scope.mjs";
+import * as secrets from "./secrets.mjs";
 import * as tokenLogging from "./token-logging.mjs";
 
-const GUARDS = [purity, emdash, tokenLogging, scope];
+const GUARDS = [purity, emdash, tokenLogging, scope, secrets];
 const selftest = process.argv.includes("--selftest");
 let failed = false;
 

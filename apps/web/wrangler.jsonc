@@ -18,6 +18,18 @@
     "producers": [{ "binding": "SYNC_QUEUE", "queue": "fire-plaid-sync" }],
     "consumers": [{ "queue": "fire-plaid-sync", "max_batch_size": 5, "max_retries": 5 }]
   },
+  // Cross-isolate rate limiting for Plaid, webhook and export endpoints
+  // (src/lib/security/rate-limit.ts). 60 requests per key per minute.
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "RATE_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "1001",
+        "simple": { "limit": 60, "period": 60 }
+      }
+    ]
+  },
   // Daily safety-net sync, because Plaid webhooks can be missed.
   "triggers": { "crons": ["17 9 * * *"] },
   "vars": {

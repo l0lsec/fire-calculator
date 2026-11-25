@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { requireApiContext } from "@/lib/auth/context";
+import { allow, tooMany } from "@/lib/security/rate-limit";
 import { PlaidNotConfiguredError, plaidDeps } from "@/server/plaid/config";
 import { exchangePublicToken } from "@/server/plaid/link";
 
@@ -13,6 +14,7 @@ const Body = z.object({
 export async function POST(request: Request) {
   const ctx = await requireApiContext();
   if (ctx instanceof Response) return ctx;
+  if (!(await allow(`plaid:${ctx.scope.householdId}`, 20))) return tooMany();
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "bad request" }, { status: 400 });
   try {

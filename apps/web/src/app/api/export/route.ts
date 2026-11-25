@@ -1,4 +1,5 @@
 import { requireApiContext } from "@/lib/auth/context";
+import { allow, tooMany } from "@/lib/security/rate-limit";
 import { exportHousehold, toCsv } from "@/server/export";
 
 export const dynamic = "force-dynamic";
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const ctx = await requireApiContext();
   if (ctx instanceof Response) return ctx;
+  if (!(await allow(`export:${ctx.scope.householdId}`, 10))) return tooMany();
   const url = new URL(request.url);
   const format = url.searchParams.get("format") ?? "json";
   const data = await exportHousehold(ctx);

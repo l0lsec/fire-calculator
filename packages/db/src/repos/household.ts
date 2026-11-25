@@ -301,3 +301,13 @@ export async function deleteScenario(db: Db, scope: HouseholdScope, id: string):
     .returning({ id: scenarios.id });
   return rows.length > 0;
 }
+
+/** Operational check: true when the schema answers a trivial query. Unscoped; reads no rows' content. */
+export async function databaseReachable(db: Db): Promise<boolean> {
+  try {
+    await db.select({ id: households.id }).from(households).limit(1);
+    return true;
+  } catch {
+    return false;
+  }
+}
