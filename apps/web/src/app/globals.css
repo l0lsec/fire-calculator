@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/* Design tokens. Light by default, dark via prefers-color-scheme or data-theme. */
+:root {
+  --bg: #f7f7f4;
+  --surface: #ffffff;
+  --surface-2: #f0f0ea;
+  --ink: #1a1d1a;
+  --ink-2: #4a514b;
+  --ink-3: #737b74;
+  --line: #dcded6;
+  --accent: #1f6f4a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2f0e7;
+  --warn: #9a5b00;
+  --warn-soft: #fbefd9;
+  --bad: #a3271f;
+  --bad-soft: #f8e1de;
+  --chart-1: #1f6f4a;
+  --chart-2: #3b6fb6;
+  --chart-3: #b8742a;
+  --chart-4: #8a4fa8;
+  --chart-5: #5f6b62;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111412;
+    --surface: #181c19;
+    --surface-2: #202521;
+    --ink: #eef1ec;
+    --ink-2: #b9c1ba;
+    --ink-3: #8d968f;
+    --line: #2e342f;
+    --accent: #5cc48d;
+    --accent-ink: #0d1a12;
+    --accent-soft: #1c3527;
+    --warn: #f0b45a;
+    --warn-soft: #3a2c14;
+    --bad: #f08a80;
+    --bad-soft: #3d1d1a;
+    --chart-1: #5cc48d;
+    --chart-2: #7aa7e6;
+    --chart-3: #e0a35c;
+    --chart-4: #c08fe0;
+    --chart-5: #9aa69d;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111412;
+  --surface: #181c19;
+  --surface-2: #202521;
+  --ink: #eef1ec;
+  --ink-2: #b9c1ba;
+  --ink-3: #8d968f;
+  --line: #2e342f;
+  --accent: #5cc48d;
+  --accent-ink: #0d1a12;
+  --accent-soft: #1c3527;
+  --warn: #f0b45a;
+  --warn-soft: #3a2c14;
+  --bad: #f08a80;
+  --bad-soft: #3d1d1a;
+  --chart-1: #5cc48d;
+  --chart-2: #7aa7e6;
+  --chart-3: #e0a35c;
+  --chart-4: #c08fe0;
+  --chart-5: #9aa69d;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fire-calculator",
+  // Custom entry: wraps OpenNext's worker and adds the cron and queue handlers.
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // Replaced with the real Hyperdrive id at cutover (docs/RUNBOOK.md).
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:55322/postgres"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "SYNC_QUEUE", "queue": "fire-plaid-sync" }],
+    "consumers": [{ "queue": "fire-plaid-sync", "max_batch_size": 5, "max_retries": 5 }]
+  },
+  // Daily safety-net sync, because Plaid webhooks can be missed.
+  "triggers": { "crons": ["17 9 * * *"] },
+  "vars": {
+    "NODE_ENV": "production",
+    "PLAID_ENV": "sandbox",
+    "DATABASE_URL": "via-hyperdrive-binding"
+  },
+  "preview_urls": false,
+  "workers_dev": true,
+  "observability": { "enabled": true }
+}

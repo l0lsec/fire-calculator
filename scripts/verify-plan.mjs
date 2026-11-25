@@ -20,7 +20,10 @@ function sectionText(plan, headingPrefix) {
   if (start < 0) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    if (lines[i].startsWith("## ")) { end = i; break; }
+    if (lines[i].startsWith("## ")) {
+      end = i;
+      break;
+    }
   }
   return lines.slice(start, end).join("\n");
 }
@@ -31,7 +34,10 @@ function subsection(text, heading) {
   if (start < 0) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    if (lines[i].startsWith("### ") || lines[i].startsWith("## ")) { end = i; break; }
+    if (lines[i].startsWith("### ") || lines[i].startsWith("## ")) {
+      end = i;
+      break;
+    }
   }
   return lines.slice(start, end).join("\n");
 }
@@ -39,17 +45,32 @@ function subsection(text, heading) {
 // ---------- checks (each returns a list of failures) ----------
 
 const REQUIRED_SECTIONS = [
-  "1. Product scope", "2. Stack", "3. Architecture", "4. Data model", "5. Plaid integration",
-  "6. Spending derivation", "7. Debt engine", "8. FI levels", "9. Projection engine",
-  "10. Worked example", "11. UI", "12. Security and privacy", "13. Phases and tickets",
-  "14. Depth tree and waves", "15. Risks", "16. Open decisions",
+  "1. Product scope",
+  "2. Stack",
+  "3. Architecture",
+  "4. Data model",
+  "5. Plaid integration",
+  "6. Spending derivation",
+  "7. Debt engine",
+  "8. FI levels",
+  "9. Projection engine",
+  "10. Worked example",
+  "11. UI",
+  "12. Security and privacy",
+  "13. Phases and tickets",
+  "14. Depth tree and waves",
+  "15. Risks",
+  "16. Open decisions",
 ];
 
 export function checkSections(plan) {
   const fails = [];
   for (const s of REQUIRED_SECTIONS) {
     const body = sectionText(plan, s);
-    if (body === null) { fails.push(`missing section: ${s}`); continue; }
+    if (body === null) {
+      fails.push(`missing section: ${s}`);
+      continue;
+    }
     const words = body.split(/\s+/).filter(Boolean).length;
     if (words < 60) fails.push(`section too thin (${words} words): ${s}`);
   }
@@ -70,7 +91,10 @@ export function checkLevels(plan) {
   if (!sec) return ["section 8 missing"];
   for (const lv of LEVELS) {
     const sub = subsection(sec, lv.heading);
-    if (!sub) { fails.push(`no subsection for ${lv.heading}`); continue; }
+    if (!sub) {
+      fails.push(`no subsection for ${lv.heading}`);
+      continue;
+    }
     if (!/\*\*Formula[^*]*:\*\*\s*`[^`]*=[^`]*`/.test(sub)) fails.push(`no formula for ${lv.heading}`);
   }
   const tickets = parseTickets(plan);
@@ -112,7 +136,11 @@ function recompute(inp) {
   out.coastFIMonths = k;
   p = inp.portfolio;
   k = 0;
-  while (p < fi) { p = p * (1 + mr) + inp.monthlyContribution; k += 1; if (k > 1200) throw new Error("fi loop"); }
+  while (p < fi) {
+    p = p * (1 + mr) + inp.monthlyContribution;
+    k += 1;
+    if (k > 1200) throw new Error("fi loop");
+  }
   out.fiMonths = k;
   out.avalanche = payoff(inp, (a, b) => b.apr - a.apr || a.balance - b.balance);
   out.snowball = payoff(inp, (a, b) => a.balance - b.balance || b.apr - a.apr);
@@ -129,8 +157,16 @@ function payoff(inp, cmp) {
     months += 1;
     if (months > 600) throw new Error("payoff did not terminate");
     let cash = budget;
-    for (const d of open()) { const i = (d.balance * d.apr) / 12; d.balance += i; interest += i; }
-    for (const d of open()) { const pay = Math.min(d.minPayment, d.balance); d.balance -= pay; cash -= pay; }
+    for (const d of open()) {
+      const i = (d.balance * d.apr) / 12;
+      d.balance += i;
+      interest += i;
+    }
+    for (const d of open()) {
+      const pay = Math.min(d.minPayment, d.balance);
+      d.balance -= pay;
+      cash -= pay;
+    }
     for (const d of open().sort(cmp)) {
       if (cash <= 0) break;
       const pay = Math.min(cash, d.balance);
@@ -144,22 +180,39 @@ function payoff(inp, cmp) {
 export function checkExample(plan) {
   const fails = [];
   let ex;
-  try { ex = parseExample(plan); } catch (e) { return [String(e.message)]; }
+  try {
+    ex = parseExample(plan);
+  } catch (e) {
+    return [String(e.message)];
+  }
   const got = recompute(ex.inputs);
   const want = ex.expected;
   const near = (a, b, tol) => Math.abs(a - b) <= tol;
   const pairs = [
-    ["leanFI", 0.5], ["fi", 0.5], ["fatFI", 0.5], ["baristaFI", 0.5], ["coastFIToday", 0.5],
-    ["coastFIMonths", 0], ["fiMonths", 0],
+    ["leanFI", 0.5],
+    ["fi", 0.5],
+    ["fatFI", 0.5],
+    ["baristaFI", 0.5],
+    ["coastFIToday", 0.5],
+    ["coastFIMonths", 0],
+    ["fiMonths", 0],
   ];
   for (const [k, tol] of pairs) {
-    if (typeof want[k] !== "number") { fails.push(`expected.${k} missing`); continue; }
+    if (typeof want[k] !== "number") {
+      fails.push(`expected.${k} missing`);
+      continue;
+    }
     if (!near(got[k], want[k], tol)) fails.push(`${k}: plan says ${want[k]}, recomputed ${got[k]}`);
   }
   for (const s of ["avalanche", "snowball"]) {
-    if (!want[s]) { fails.push(`expected.${s} missing`); continue; }
-    if (got[s].months !== want[s].months) fails.push(`${s}.months: plan ${want[s].months}, recomputed ${got[s].months}`);
-    if (!near(got[s].totalInterest, want[s].totalInterest, 0.01)) fails.push(`${s}.totalInterest: plan ${want[s].totalInterest}, recomputed ${got[s].totalInterest}`);
+    if (!want[s]) {
+      fails.push(`expected.${s} missing`);
+      continue;
+    }
+    if (got[s].months !== want[s].months)
+      fails.push(`${s}.months: plan ${want[s].months}, recomputed ${got[s].months}`);
+    if (!near(got[s].totalInterest, want[s].totalInterest, 0.01))
+      fails.push(`${s}.totalInterest: plan ${want[s].totalInterest}, recomputed ${got[s].totalInterest}`);
   }
   // The prose must quote the same numbers the fixture holds.
   const sec = sectionText(plan, "10. Worked example") ?? "";
@@ -179,8 +232,15 @@ export function parseTickets(plan) {
   let cur = null;
   for (const line of lines) {
     const h = line.match(/^### (T\d+\.\d+) (.+)$/);
-    if (h) { cur = { id: h[1], title: h[2], body: [] }; tickets.push(cur); continue; }
-    if (line.startsWith("### ") || line.startsWith("## ")) { cur = null; continue; }
+    if (h) {
+      cur = { id: h[1], title: h[2], body: [] };
+      tickets.push(cur);
+      continue;
+    }
+    if (line.startsWith("### ") || line.startsWith("## ")) {
+      cur = null;
+      continue;
+    }
     if (cur) cur.body.push(line);
   }
   return tickets.map((t) => {
@@ -197,7 +257,12 @@ export function parseTickets(plan) {
       id: t.id,
       wave: field("Wave") ? Number(field("Wave")) : NaN,
       depends: !deps ? null : deps.trim() === "none" ? [] : deps.split(",").map((s) => s.trim()),
-      owns: field("Owns") ? field("Owns").split(",").map((s) => s.trim()).filter(Boolean) : null,
+      owns: field("Owns")
+        ? field("Owns")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : null,
       deliverable: field("Deliverable"),
       gates,
     };
@@ -222,11 +287,13 @@ export function checkTickets(plan) {
     if (!t.deliverable) fails.push(`${t.id}: no Deliverable`);
     if (!Number.isInteger(t.wave)) fails.push(`${t.id}: no Wave`);
     if (!t.gates.some((g) => g.runnable)) fails.push(`${t.id}: no runnable gate with a success token`);
-    for (const g of t.gates) if (!g.runnable && !g.manual) fails.push(`${t.id}:${g.id} is neither runnable nor marked manual`);
+    for (const g of t.gates)
+      if (!g.runnable && !g.manual) fails.push(`${t.id}:${g.id} is neither runnable nor marked manual`);
     const tokens = t.gates.filter((g) => g.runnable).map((g) => g.text.match(/expect `([A-Z0-9_]+)`/)[1]);
     if (new Set(tokens).size !== tokens.length) fails.push(`${t.id}: duplicate success tokens`);
   }
-  for (const t of ts) for (const d of t.depends ?? []) if (!byId.has(d)) fails.push(`${t.id} depends on unknown ${d}`);
+  for (const t of ts)
+    for (const d of t.depends ?? []) if (!byId.has(d)) fails.push(`${t.id} depends on unknown ${d}`);
   if (fails.length) return fails;
 
   // Acyclic, and computed wave equals stated wave.
@@ -242,42 +309,80 @@ export function checkTickets(plan) {
     wave.set(id, w);
     return w;
   };
-  try { for (const t of ts) compute(t.id); } catch (e) { return [e.message]; }
-  for (const t of ts) if (wave.get(t.id) !== t.wave) fails.push(`${t.id}: stated wave ${t.wave}, computed ${wave.get(t.id)}`);
+  try {
+    for (const t of ts) compute(t.id);
+  } catch (e) {
+    return [e.message];
+  }
+  for (const t of ts)
+    if (wave.get(t.id) !== t.wave) fails.push(`${t.id}: stated wave ${t.wave}, computed ${wave.get(t.id)}`);
 
   // Wave table in section 14 matches.
   const sec14 = sectionText(plan, "14. Depth tree and waves") ?? "";
   const rows = [...sec14.matchAll(/^\| (\d+) \| (T[\d., T]+) \|$/gm)];
   const tableWave = new Map();
-  for (const r of rows) for (const id of r[2].split(",").map((s) => s.trim())) tableWave.set(id, Number(r[1]));
-  for (const t of ts) if (tableWave.get(t.id) !== wave.get(t.id)) fails.push(`${t.id}: wave table says ${tableWave.get(t.id)}, computed ${wave.get(t.id)}`);
-  if (tableWave.size !== ts.length) fails.push(`wave table lists ${tableWave.size} tickets, plan has ${ts.length}`);
+  for (const r of rows)
+    for (const id of r[2].split(",").map((s) => s.trim())) tableWave.set(id, Number(r[1]));
+  for (const t of ts)
+    if (tableWave.get(t.id) !== wave.get(t.id))
+      fails.push(`${t.id}: wave table says ${tableWave.get(t.id)}, computed ${wave.get(t.id)}`);
+  if (tableWave.size !== ts.length)
+    fails.push(`wave table lists ${tableWave.size} tickets, plan has ${ts.length}`);
 
   // Disjoint ownership within a wave.
   const waves = new Map();
-  for (const t of ts) { const w = wave.get(t.id); if (!waves.has(w)) waves.set(w, []); waves.get(w).push(t); }
-  for (const [w, group] of waves) {
-    for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
-      for (const a of group[i].owns) for (const b of group[j].owns) {
-        const pa = ownPrefix(a); const pb = ownPrefix(b);
-        if (pa.startsWith(pb) || pb.startsWith(pa)) fails.push(`wave ${w}: ${group[i].id} (${a}) overlaps ${group[j].id} (${b})`);
-      }
-    }
+  for (const t of ts) {
+    const w = wave.get(t.id);
+    if (!waves.has(w)) waves.set(w, []);
+    waves.get(w).push(t);
   }
-  if (fails.length === 0) console.log(`tickets=${ts.length} waves=${waves.size} gates=${ts.reduce((s, t) => s + t.gates.length, 0)}`);
+  for (const [w, group] of waves) {
+    for (let i = 0; i < group.length; i++)
+      for (let j = i + 1; j < group.length; j++) {
+        for (const a of group[i].owns)
+          for (const b of group[j].owns) {
+            const pa = ownPrefix(a);
+            const pb = ownPrefix(b);
+            if (pa.startsWith(pb) || pb.startsWith(pa))
+              fails.push(`wave ${w}: ${group[i].id} (${a}) overlaps ${group[j].id} (${b})`);
+          }
+      }
+  }
+  if (fails.length === 0)
+    console.log(
+      `tickets=${ts.length} waves=${waves.size} gates=${ts.reduce((s, t) => s + t.gates.length, 0)}`,
+    );
   return fails;
 }
 
 const PLAID_TERMS = [
-  "/link/token/create", "/item/public_token/exchange", "/transactions/sync", "/liabilities/get",
-  "/investments/holdings/get", "/accounts/get", "/item/remove", "/webhook_verification_key/get",
-  "SYNC_UPDATES_AVAILABLE", "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION", "ITEM_LOGIN_REQUIRED",
-  "PENDING_EXPIRATION", "PENDING_DISCONNECT", "USER_PERMISSION_REVOKED", "NEW_ACCOUNTS_AVAILABLE",
-  "HOLDINGS: DEFAULT_UPDATE", "LIABILITIES: DEFAULT_UPDATE", "Plaid-Verification", "request_body_sha256",
+  "/link/token/create",
+  "/item/public_token/exchange",
+  "/transactions/sync",
+  "/liabilities/get",
+  "/investments/holdings/get",
+  "/accounts/get",
+  "/item/remove",
+  "/webhook_verification_key/get",
+  "SYNC_UPDATES_AVAILABLE",
+  "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION",
+  "ITEM_LOGIN_REQUIRED",
+  "PENDING_EXPIRATION",
+  "PENDING_DISCONNECT",
+  "USER_PERMISSION_REVOKED",
+  "NEW_ACCOUNTS_AVAILABLE",
+  "HOLDINGS: DEFAULT_UPDATE",
+  "LIABILITIES: DEFAULT_UPDATE",
+  "Plaid-Verification",
+  "request_body_sha256",
 ];
 const SPENDING_RULES = [
-  /Credit card payment rule/i, /Internal transfer matching/i, /Mortgage escrow/i,
-  /Investment contributions/i, /Debt payments/i, /Refunds/i,
+  /Credit card payment rule/i,
+  /Internal transfer matching/i,
+  /Mortgage escrow/i,
+  /Investment contributions/i,
+  /Debt payments/i,
+  /Refunds/i,
 ];
 
 export function checkPlaid(plan) {
@@ -291,7 +396,9 @@ export function checkPlaid(plan) {
 
 export function findEmDashes(text) {
   const hits = [];
-  text.split("\n").forEach((l, i) => { if (l.includes(EM_DASH)) hits.push(i + 1); });
+  text.split("\n").forEach((l, i) => {
+    if (l.includes(EM_DASH)) hits.push(i + 1);
+  });
   return hits;
 }
 
@@ -308,17 +415,53 @@ function checkEmDash() {
 
 function checkSelftest(plan) {
   const fails = [];
-  const expectFail = (label, fn, broken) => { if (fn(broken).length === 0) fails.push(`negative control passed but should fail: ${label}`); };
+  const expectFail = (label, fn, broken) => {
+    if (fn(broken).length === 0) fails.push(`negative control passed but should fail: ${label}`);
+  };
   if (checkTickets(plan).length) fails.push("baseline plan fails tickets check");
   if (checkExample(plan).length) fails.push("baseline plan fails example check");
   expectFail("removed Depends", checkTickets, plan.replace("- **Depends:** T1.4\n", ""));
-  expectFail("unknown dependency", checkTickets, plan.replace("- **Depends:** T1.2, T1.3", "- **Depends:** T1.2, T9.9"));
-  expectFail("dependency cycle", checkTickets, plan.replace("- **Depends:** T0.1\n- **Owns:** packages/db/**", "- **Depends:** T0.3\n- **Owns:** packages/db/**"));
-  expectFail("overlapping owns in one wave", checkTickets, plan.replace("packages/spending/**, scripts/verify/t32-**", "packages/engine/src/debt/x.ts, scripts/verify/t32-**"));
-  expectFail("gate without token", checkTickets, plan.replace("expect `NEGAM_VERIFIED`", "expect `whatever`"));
-  expectFail("altered coast figure", checkExample, plan.replace('"coastFIToday": 382640', '"coastFIToday": 382000'));
-  expectFail("altered snowball interest", checkExample, plan.replace('"totalInterest": 7918.59', '"totalInterest": 7900.00'));
-  expectFail("removed Coast FI formula", checkLevels, plan.replace("**Formula:** `CoastFI(t)", "Formula `CoastFI(t)"));
+  expectFail(
+    "unknown dependency",
+    checkTickets,
+    plan.replace("- **Depends:** T1.2, T1.3", "- **Depends:** T1.2, T9.9"),
+  );
+  expectFail(
+    "dependency cycle",
+    checkTickets,
+    plan.replace(
+      "- **Depends:** T0.1\n- **Owns:** packages/db/**",
+      "- **Depends:** T0.3\n- **Owns:** packages/db/**",
+    ),
+  );
+  expectFail(
+    "overlapping owns in one wave",
+    checkTickets,
+    plan.replace(
+      "packages/spending/**, scripts/verify/t32-**",
+      "packages/engine/src/debt/x.ts, scripts/verify/t32-**",
+    ),
+  );
+  expectFail(
+    "gate without token",
+    checkTickets,
+    plan.replace("expect `NEGAM_VERIFIED`", "expect `whatever`"),
+  );
+  expectFail(
+    "altered coast figure",
+    checkExample,
+    plan.replace('"coastFIToday": 382640', '"coastFIToday": 382000'),
+  );
+  expectFail(
+    "altered snowball interest",
+    checkExample,
+    plan.replace('"totalInterest": 7918.59', '"totalInterest": 7900.00'),
+  );
+  expectFail(
+    "removed Coast FI formula",
+    checkLevels,
+    plan.replace("**Formula:** `CoastFI(t)", "Formula `CoastFI(t)"),
+  );
   expectFail("removed escrow rule", checkPlaid, plan.replace("**Mortgage escrow:**", "**Housing:**"));
   return fails;
 }
@@ -335,10 +478,21 @@ const MODES = {
   selftest: [checkSelftest, "SELFTEST_VERIFIED"],
 };
 
-const mode = process.argv[2];
-if (!MODES[mode]) { console.error(`usage: verify-plan.mjs <${Object.keys(MODES).join("|")}>`); process.exit(2); }
-const plan = readFileSync(PLAN_PATH, "utf8");
-const [fn, token] = MODES[mode];
-const fails = fn(plan);
-if (fails.length) { for (const f of fails) console.error(`FAIL ${f}`); process.exit(1); }
-console.log(token);
+function main() {
+  const mode = process.argv[2];
+  if (!MODES[mode]) {
+    console.error(`usage: verify-plan.mjs <${Object.keys(MODES).join("|")}>`);
+    process.exit(2);
+  }
+  const plan = readFileSync(PLAN_PATH, "utf8");
+  const [fn, token] = MODES[mode];
+  const fails = fn(plan);
+  if (fails.length) {
+    for (const f of fails) console.error(`FAIL ${f}`);
+    process.exit(1);
+  }
+  console.log(token);
+}
+
+// Run only when executed directly, so other scripts can import the parsers.
+if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) main();

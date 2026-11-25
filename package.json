@@ -1,0 +1,30 @@
+{
+  "name": "fire-calculator",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "guards": "node scripts/guards/run-all.mjs",
+    "guards:selftest": "node scripts/guards/run-all.mjs --selftest",
+    "dev": "pnpm --filter @fire/web dev",
+    "build": "pnpm --filter @fire/web build",
+    "gates": "node ~/.claude/skills/unlazy/scripts/gate-check.mjs --status"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.0",
+    "@types/node": "24.13.3",
+    "fast-check": "4.9.0",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "@playwright/test": "1.62.1",
+    "axe-core": "4.13.0"
+  }
+}

@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+# pnpm 11 reads build-script permissions from here, not package.json.
+allowBuilds:
+  esbuild: true
+  workerd: true
+  sharp: true
+  unrs-resolver: true
