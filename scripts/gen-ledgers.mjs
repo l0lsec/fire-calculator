@@ -15,7 +15,13 @@ for (const t of parseTickets(plan)) {
   for (const g of t.gates) {
     const m = g.text.match(/^(.*?)\s*Check `node ([^`]+)`, expect `([A-Z0-9_]+)`\.?$/);
     if (m) {
-      lines.push(`- [ ] ${g.id}: ${m[1]}`, `  CHECK: node ${m[2]}`, `  EXPECT: ${m[3]}`, "  EVIDENCE: pending", "");
+      lines.push(
+        `- [ ] ${g.id}: ${m[1]}`,
+        `  CHECK: node ${m[2]}`,
+        `  EXPECT: ${m[3]}`,
+        "  EVIDENCE: pending",
+        "",
+      );
     } else {
       lines.push(`- [ ] ${g.id}: ${g.text}`, "  EVIDENCE: pending", "");
     }
