@@ -2,9 +2,11 @@ import { getSpendingProfile } from "@fire/db";
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
 import { DrillTiles } from "@/components/breakdown";
-import { MonthlyBars } from "@/components/charts/monthly-bars";
+import { CategoryTrends } from "@/components/charts/category-trends";
+import { StackedBars } from "@/components/charts/stacked-bars";
 import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
+import { categoryTrends, spendingSplitByMonth } from "@/lib/chart-data";
 import { dateText, usdCents } from "@/lib/format";
 import { effectiveSpendingSource, todayISO } from "@/server/snapshot";
 import { categoryLabel, FLAG_TEXT, spendingBreakdowns, spendingView } from "@/server/spending";
@@ -29,6 +31,13 @@ export default async function SpendingPage() {
   const hasEstimate = (profile?.manualAnnualCents ?? 0) > 0;
   const queue = s.reviewQueue.slice(0, 40);
   const breakdowns = spendingBreakdowns(s);
+  const months = s.monthly.map((m) => m.month);
+  const split = spendingSplitByMonth(s.classified, months);
+  const withSpending = s.monthly.filter((m) => m.livingCents !== 0);
+  const averageMonth = withSpending.length
+    ? withSpending.reduce((v, m) => v + m.livingCents, 0) / withSpending.length / 100
+    : 0;
+  const trends = categoryTrends(s.classified, months, categoryLabel, 6);
 
   if (!connected) {
     return (
@@ -105,11 +114,25 @@ export default async function SpendingPage() {
         ]}
       />
 
-      {s.monthly.some((m) => m.livingCents !== 0) ? (
+      {withSpending.length ? (
         <Card title="Month by month">
-          <MonthlyBars
-            data={s.monthly.map((m) => ({ month: m.month, cents: m.livingCents }))}
-            label="Living spending by month"
+          <p className="mb-3 text-sm text-ink-3">
+            What you spent each month on living costs, essentials and discretionary apart. Mortgage escrow is
+            not in these bars.
+          </p>
+          <StackedBars
+            rows={split.map((m) => ({
+              label: m.month,
+              essential: m.essential,
+              discretionary: m.discretionary,
+            }))}
+            series={[
+              { key: "essential", label: "Essentials", color: "var(--chart-1)" },
+              { key: "discretionary", label: "Discretionary", color: "var(--chart-2)" },
+            ]}
+            label={`Living spending by month, essentials and discretionary; average ${usdCents(averageMonth * 100)} a month`}
+            totalLabel="Spent"
+            average={{ value: averageMonth, label: "your average month with spending" }}
             testId="spending-monthly"
           />
         </Card>
@@ -265,6 +288,12 @@ export default async function SpendingPage() {
               </li>
             ))}
           </ul>
+        </Card>
+      ) : null}
+
+      {trends.length > 1 ? (
+        <Card title="Category trends">
+          <CategoryTrends trends={trends} testId="spending-category-trends" />
         </Card>
       ) : null}
 

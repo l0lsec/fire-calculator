@@ -209,6 +209,16 @@ describe.each(VARIANTS)("dashboard breakdowns: $name", (v) => {
     if (h.fiTarget > h.portfolio) expect(last(tiles["fi-date"])).toBeCloseTo(h.fiTarget - h.portfolio, 6);
   });
 
+  it("each month's income chart parts add up to that month's income, and to the savings-rate totals", () => {
+    const rows = m.incomeByMonth;
+    expect(rows).toHaveLength(12);
+    for (const r of rows) expect(r.saved + r.living + r.escrow + r.interest).toBeCloseTo(r.income, 6);
+    const total = (k: keyof (typeof rows)[number]) => rows.reduce((s, r) => s + (r[k] as number), 0);
+    const sr = tiles["savings-rate"];
+    expect(total("income")).toBeCloseTo(sr.steps[0]!.total.value, 6);
+    expect(total("saved")).toBeCloseTo(sr.steps[1]!.total.value, 6);
+  });
+
   it("the savings rate is the same figure the dashboard showed before breakdowns", () => {
     const acc = plan.result!.accumulation;
     let gross = 0;

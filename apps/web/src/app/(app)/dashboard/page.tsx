@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DrillRow, DrillTiles } from "@/components/breakdown";
 import { ProjectionChart } from "@/components/charts/projection-chart";
+import { StackedBars } from "@/components/charts/stacked-bars";
 import { ProgressBar, StepList } from "@/components/steps";
 import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { ALERT_HREF } from "@/lib/alert-links";
@@ -351,6 +352,38 @@ export default async function DashboardPage({
               <Ladder rows={m.ladder} />
             </Card>
           </div>
+
+          {m.incomeByMonth.some((r) => r.income > 0) ? (
+            <Card title="Where each month's income goes">
+              <p className="mb-3 text-sm text-ink-3">
+                The next 12 months of your plan: what you keep, what living costs take and what goes to debt
+                interest. Together they make up the month&apos;s income, take-home pay plus contributions
+                taken before tax.
+              </p>
+              <StackedBars
+                rows={m.incomeByMonth.map((r) => ({
+                  label: r.label,
+                  saved: Math.round(r.saved),
+                  living: Math.round(r.living + r.escrow),
+                  interest: Math.round(r.interest),
+                }))}
+                series={[
+                  { key: "saved", label: "Saved", color: "var(--chart-1)" },
+                  { key: "living", label: "Living spending", color: "var(--chart-2)" },
+                  ...(m.incomeByMonth.some((r) => r.interest > 0.5)
+                    ? [{ key: "interest", label: "Debt interest", color: "var(--chart-3)" }]
+                    : []),
+                ]}
+                label="Income by month for the next 12 months, split into saved, living spending and debt interest"
+                totalLabel="Income"
+                testId="income-by-month"
+              />
+              <p className="mt-2 text-xs text-ink-3">
+                Living spending includes mortgage escrow. Principal you pay on debts counts as saved, as in
+                your savings rate.
+              </p>
+            </Card>
+          ) : null}
         </>
       ) : null}
       <Disclaimer />

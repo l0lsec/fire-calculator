@@ -5,6 +5,8 @@ import type { Debt, Strategy } from "@fire/engine/core";
 import { compareStrategies, simulateDebts } from "@fire/engine/debt";
 import { useMemo, useState } from "react";
 import { ActionForm } from "@/components/action-form";
+import { StackedBars } from "@/components/charts/stacked-bars";
+import { paymentSplit } from "@/lib/chart-data";
 import { duration, monthName, usd } from "@/lib/format";
 import { saveDebtPlanAction } from "./actions";
 import { PayoffChart } from "./payoff-chart";
@@ -74,6 +76,7 @@ export function DebtPlanner({
   const comparison = useMemo(() => compareStrategies(debts, plan, { startMonth }), [debts, plan, startMonth]);
   const maxExtra = Math.max(2000, Math.ceil((result.budget * 2) / 100) * 100);
   const best = recommend(comparison.results);
+  const split = useMemo(() => paymentSplit(result.schedule, startMonth), [result.schedule, startMonth]);
 
   if (debts.length === 0) return <p className="text-sm text-ink-3">No debts with a known rate to plan.</p>;
 
@@ -162,6 +165,28 @@ export function DebtPlanner({
       </div>
 
       <PayoffChart result={result} debts={debts} startMonth={startMonth} />
+
+      {split.rows.length ? (
+        <section className="flex flex-col gap-2" aria-labelledby="payment-split-heading">
+          <h3 id="payment-split-heading" className="text-sm font-semibold">
+            Where each {split.per === "month" ? "month's" : "year's"} payments go
+          </h3>
+          <p className="text-sm text-ink-3">
+            The interest part is the cost of the debt; the principal part pays the balance down. As balances
+            fall, less of each payment goes to interest.
+          </p>
+          <StackedBars
+            rows={split.rows}
+            series={[
+              { key: "principal", label: "Principal", color: "var(--chart-1)" },
+              { key: "interest", label: "Interest", color: "var(--chart-3)" },
+            ]}
+            label={`Debt payments by ${split.per}, split into interest and principal`}
+            totalLabel="Paid"
+            testId="debt-payment-split"
+          />
+        </section>
+      ) : null}
 
       {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable table must be reachable by keyboard */}
       <section className="overflow-x-auto" aria-label="Strategy comparison" tabIndex={0}>

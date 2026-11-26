@@ -81,6 +81,8 @@ export interface FirstYear {
   gross: number;
   saved: number;
   rate: number | null;
+  /** The same split month by month (k = 1..months); each month's parts add up to its income. */
+  byMonth: { k: number; income: number; living: number; escrow: number; interest: number; saved: number }[];
 }
 
 /** The next 12 months on the keep-working path, split the way the savings rate counts them. */
@@ -94,6 +96,17 @@ export function firstYear(p: Parts): FirstYear {
     for (let k = 1; k <= months; k++) v += f(k);
     return v;
   };
+  // Pay and contributions per source per month, so the totals and the monthly
+  // split are the same numbers.
+  const incomeAt = (k: number) =>
+    input.income.reduce(
+      (v, s) => v + flowsAt({ ...input, income: [s], contributions: [] }, k, false).income,
+      0,
+    ) +
+    input.contributions.reduce(
+      (v, c) => v + flowsAt({ ...input, income: [], contributions: [c] }, k, false).contributionTotal,
+      0,
+    );
   const income = input.income
     .map((s) => ({
       label: s.name,
@@ -117,10 +130,18 @@ export function firstYear(p: Parts): FirstYear {
     .filter((l) => Math.abs(l.value) > 0.005);
   let living = 0;
   let escrow = 0;
+  const byMonth: FirstYear["byMonth"] = [];
   for (let k = 1; k <= months; k++) {
     const f = flowsAt(input, k, false);
-    living += f.livingExpenses - f.escrow;
-    escrow += f.escrow;
+    const m = {
+      income: incomeAt(k),
+      living: f.livingExpenses - f.escrow,
+      escrow: f.escrow,
+      interest: acc.debt.schedule[k - 1]?.totalInterest ?? 0,
+    };
+    byMonth.push({ k, ...m, saved: m.income - m.living - m.escrow - m.interest });
+    living += m.living;
+    escrow += m.escrow;
   }
   const interest = sumOver((k) => acc.debt.schedule[k - 1]?.totalInterest ?? 0);
   const gross = [...income, ...contributions].reduce((s, l) => s + l.value, 0);
@@ -135,6 +156,7 @@ export function firstYear(p: Parts): FirstYear {
     gross,
     saved,
     rate: gross > 0 ? saved / gross : null,
+    byMonth,
   };
 }
 

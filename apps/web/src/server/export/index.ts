@@ -20,6 +20,7 @@ import {
   setSpendingProfile,
 } from "@fire/db";
 import { z } from "zod";
+import { balanceHistory } from "@/lib/chart-data";
 import { readScenario } from "../scenarios";
 import { loadHousehold, measuredMonthlyCents, spendingBasis } from "../snapshot";
 import { todayISO } from "../today";
@@ -306,25 +307,17 @@ export function toCsv(rows: Record<string, unknown>[]): string {
 
 /** Net worth over time from daily balance snapshots: assets minus card and loan balances. */
 export async function netWorthHistory(ctx: Ctx, from: string, to: string) {
+  return (await balanceHistoryRange(ctx, from, to)).map((p) => ({
+    date: p.date,
+    netWorthCents: p.netWorthCents,
+  }));
+}
+
+/** Net worth and the balances counted toward FI on every day with a snapshot. */
+export async function balanceHistoryRange(ctx: Ctx, from: string, to: string) {
   const [snaps, accounts] = await Promise.all([
     listSnapshots(ctx.db, ctx.scope, from, to),
     listAccounts(ctx.db, ctx.scope, { includeArchived: true }),
   ]);
-  const kind = new Map(accounts.map((a) => [a.id, a.type === "credit" || a.type === "loan" ? -1 : 1]));
-  const byDate = new Map<string, Map<string, number>>();
-  for (const s of snaps) {
-    const m = byDate.get(s.asOfDate) ?? new Map<string, number>();
-    m.set(s.accountId, s.currentCents);
-    byDate.set(s.asOfDate, m);
-  }
-  // Carry each account's last known balance forward so gaps do not look like losses.
-  const last = new Map<string, number>();
-  const out: { date: string; netWorthCents: number }[] = [];
-  for (const date of [...byDate.keys()].sort()) {
-    for (const [id, c] of byDate.get(date)!) last.set(id, c);
-    let total = 0;
-    for (const [id, c] of last) total += (kind.get(id) ?? 1) * c;
-    out.push({ date, netWorthCents: total });
-  }
-  return out;
+  return balanceHistory(snaps, accounts);
 }
