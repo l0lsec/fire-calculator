@@ -18,7 +18,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PlaidDeps } from "../src/server/plaid/config";
 import { deleteAllData, disconnectItem, itemsForDisplay } from "../src/server/plaid/items";
 import { exchangePublicToken } from "../src/server/plaid/link";
-import { bucketFor, INVESTMENT_SUBTYPE_BUCKETS } from "../src/server/plaid/mapping";
+import {
+  bucketFor,
+  costBasisCents,
+  holdingsByAccount,
+  INVESTMENT_SUBTYPE_BUCKETS,
+} from "../src/server/plaid/mapping";
 import { syncItem } from "../src/server/plaid/sync";
 import { handleWebhook } from "../src/server/plaid/webhook";
 import { planForScenario } from "../src/server/snapshot";
@@ -211,6 +216,39 @@ describe("mapping", () => {
     expect(after.apr).toBe(0.1999);
     expect(after.aprSource).toBe("user");
     expect(after.balanceCents).toBe(222200);
+  });
+
+  it("one security reported several times in an account (one row per money source) merges into one position", () => {
+    const row = (account: string, security: string, qty: number, value: number, basis: number | null) =>
+      ({
+        account_id: account,
+        security_id: security,
+        quantity: qty,
+        institution_value: value,
+        cost_basis: basis,
+      }) as never;
+    const res = {
+      accounts: [],
+      securities: [{ security_id: "fund", ticker_symbol: "FUND", name: "Target 2055", type: "mutual fund" }],
+      holdings: [
+        row("k401", "fund", 10, 1000.1, 900),
+        row("k401", "fund", 5, 500.2, 450),
+        row("k401", "cash", 1, 25, null),
+        row("ira", "fund", 2, 200, 150),
+      ],
+    } as never;
+    const by = holdingsByAccount(res);
+    const k = by.get("k401") ?? [];
+    expect(k.map((h) => h.securityId)).toEqual(["fund", "cash"]);
+    expect(k[0]).toMatchObject({ quantity: 15, valueCents: 150030, costBasisCents: 135000, ticker: "FUND" });
+    expect(by.get("ira")?.[0]).toMatchObject({ quantity: 2, valueCents: 20000, costBasisCents: 15000 });
+    // A missing basis on any merged row makes the position's basis unknown.
+    const mixed = holdingsByAccount({
+      ...(res as object),
+      holdings: [row("a", "fund", 1, 10, 5), row("a", "fund", 1, 10, null)],
+    } as never);
+    expect(mixed.get("a")?.[0]?.costBasisCents).toBeNull();
+    expect(costBasisCents(mixed.get("a") ?? [])).toBeNull();
   });
 
   it("every Plaid investment subtype maps to a bucket explicitly", () => {

@@ -208,18 +208,36 @@ export function debtFieldsFrom(
 export function holdingsByAccount(res: InvestmentsHoldingsGetResponse): Map<string, HoldingValues[]> {
   const securities = new Map(res.securities.map((s) => [s.security_id, s]));
   const out = new Map<string, HoldingValues[]>();
+  // Some institutions (Empower 401(k)s, for one) report the same security more
+  // than once in an account, one row per money source (employee, employer,
+  // rollover). Merge them into one position per security: quantities and values
+  // add, and cost basis adds only while every row has one.
+  const byKey = new Map<string, HoldingValues>();
   for (const h of res.holdings) {
+    const valueCents = Math.round(h.institution_value * 100);
+    const costBasis = h.cost_basis === null ? null : Math.round(h.cost_basis * 100);
+    const key = `${h.account_id}\u0000${h.security_id}`;
+    const seen = byKey.get(key);
+    if (seen) {
+      seen.quantity += h.quantity;
+      seen.valueCents += valueCents;
+      seen.costBasisCents =
+        seen.costBasisCents === null || costBasis === null ? null : seen.costBasisCents + costBasis;
+      continue;
+    }
     const s = securities.get(h.security_id);
-    const list = out.get(h.account_id) ?? [];
-    list.push({
+    const row: HoldingValues = {
       securityId: h.security_id,
       ticker: s?.ticker_symbol ?? null,
       name: s?.name ?? null,
       securityType: s?.type ?? null,
       quantity: h.quantity,
-      valueCents: Math.round(h.institution_value * 100),
-      costBasisCents: h.cost_basis === null ? null : Math.round(h.cost_basis * 100),
-    });
+      valueCents,
+      costBasisCents: costBasis,
+    };
+    byKey.set(key, row);
+    const list = out.get(h.account_id) ?? [];
+    list.push(row);
     out.set(h.account_id, list);
   }
   return out;
