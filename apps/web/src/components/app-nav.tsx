@@ -26,6 +26,7 @@ export const PLACES: Place[] = [
       { href: "/spending", label: "Review" },
       { href: "/budgets", label: "Budgets" },
       { href: "/bills", label: "Bills" },
+      { href: "/safe-to-spend", label: "Safe to spend" },
     ],
   },
   { href: "/scenarios", label: "Scenarios" },
@@ -107,7 +108,7 @@ export function AppNav() {
   );
 }
 
-/** Tabs for the pages that share a place (Spending: Review, Budgets, Bills). */
+/** Tabs for the pages that share a place (Spending: Review, Budgets, Bills, Safe to spend). */
 export function SectionTabs() {
   const path = usePathname() ?? "";
   const current = placeFor(path);
