@@ -99,20 +99,53 @@ function monthsToRepay(balance: number, payment: number, r: number): number {
  */
 export function debtTerm(input: EngineInput, acc: Projection, row: MonthRow): number {
   if (input.policy !== "keepMortgage") return real(row, row.debtBalance);
-  const balances = balancesAt(acc.debt, row.k);
-  const iMonthly = monthlyRate(input.assumptions.nominalReturn);
   let nominal = 0;
+  for (const p of debtTermNominal(input, acc, row)) nominal += p.nominal;
+  return real(row, nominal);
+}
+
+/** Each debt's share of D(t), nominal, in input order (debts already paid off are left out). */
+function debtTermNominal(
+  input: EngineInput,
+  acc: Projection,
+  row: MonthRow,
+): { id: string; nominal: number; presentValue: boolean }[] {
+  const balances = balancesAt(acc.debt, row.k);
+  const keep = input.policy === "keepMortgage";
+  const iMonthly = monthlyRate(input.assumptions.nominalReturn);
+  const parts: { id: string; nominal: number; presentValue: boolean }[] = [];
   for (const d of input.debts) {
     const bal = balances[d.id] ?? 0;
     if (bal <= 0.005) continue;
-    if (!isMortgage(d) || d.minPayment.type !== "fixed") {
-      nominal += bal;
+    if (!keep || !isMortgage(d) || d.minPayment.type !== "fixed") {
+      parts.push({ id: d.id, nominal: bal, presentValue: false });
       continue;
     }
     const n = monthsToRepay(bal, d.minPayment.amount, d.apr / 12);
-    nominal += Number.isFinite(n) ? Math.min(bal, annuityPV(d.minPayment.amount, iMonthly, n)) : bal;
+    parts.push({
+      id: d.id,
+      nominal: Number.isFinite(n) ? Math.min(bal, annuityPV(d.minPayment.amount, iMonthly, n)) : bal,
+      presentValue: Number.isFinite(n),
+    });
   }
-  return real(row, nominal);
+  return parts;
+}
+
+/**
+ * D(t) split by debt, in today's dollars: what each debt adds to every target at `row`.
+ * `presentValue` marks a kept mortgage counted at the present value of its payments.
+ * The parts add up to debtTerm().
+ */
+export function debtTermParts(
+  input: EngineInput,
+  acc: Projection,
+  row: MonthRow,
+): { id: string; amount: number; presentValue: boolean }[] {
+  return debtTermNominal(input, acc, row).map((p) => ({
+    id: p.id,
+    amount: real(row, p.nominal),
+    presentValue: p.presentValue,
+  }));
 }
 
 function rowAtK(p: Projection, k: number): MonthRow {

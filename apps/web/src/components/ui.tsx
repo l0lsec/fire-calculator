@@ -93,14 +93,17 @@ export function Card({
   action,
   children,
   className = "",
+  id,
 }: {
   title?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Anchor for links such as /plan#income. */
+  id?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-line bg-surface p-5 ${className}`}>
+    <section id={id} className={`scroll-mt-20 rounded-2xl border border-line bg-surface p-5 ${className}`}>
       {title || action ? (
         <div className="mb-4 flex items-center justify-between gap-3">
           {title ? <h2 className="text-base font-semibold text-ink">{title}</h2> : <span />}

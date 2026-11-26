@@ -26,6 +26,9 @@ write your own:
 | A link that is a call to action | `ButtonLink` (`components/ui.tsx`) | same sizes and variants as `Button` |
 | Progress | `ProgressBar`, `StepList` (`components/steps.tsx`) | "2 of 4 done", numbered steps with done marks |
 | Dates on screen | `dateText`, `dateTimeText` (`lib/format.ts`) | local time, never UTC or ISO strings |
+| A summary number (a total, a rate, a target) | `DrillTiles` / `DrillRow` (`components/breakdown.tsx`) with a `Breakdown` (`lib/breakdown.ts`) | tap opens what it is made of in place; each step's lines must evaluate to its total (`evaluateStep`, unit-tested); say what is not counted and why; link to where each input is changed; `#id` in the URL opens it |
+| Parts of a whole as a chart | `Breakdown.chart` (rendered by `Donut`, `components/charts/donut.tsx`) built with `foldSlices` | at most four named slices plus a gray "Other"; the legend lists every value and share |
+| Amounts month by month | `MonthlyBars` (`components/charts/monthly-bars.tsx`) | one series, average as a dashed line |
 
 Navigation (`components/app-nav.tsx`) has seven places: Dashboard, Plan, Debts, Spending (tabs Review, Budgets,
 Bills), Scenarios, History, Accounts (tabs Accounts, Connections). Alerts sits in the header. Phones get a menu.

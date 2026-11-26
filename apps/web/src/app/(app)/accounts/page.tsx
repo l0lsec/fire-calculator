@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
+import { DrillTiles } from "@/components/breakdown";
 import { ButtonLink, Card } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
 import { accountsForDisplay } from "@/server/accounts";
 import { BUCKET_LABELS, BUCKETS } from "@/server/accounts/labels";
+import { accountsBreakdown } from "@/server/dashboard/breakdowns";
 import { AccountForm } from "./account-form";
 import { deleteAccountAction } from "./actions";
 
@@ -24,8 +26,7 @@ export default async function AccountsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Accounts</h1>
           <p className="text-sm text-ink-3">
-            Counting toward FI: <span className="num font-medium text-ink">{usdCents(total)}</span>. Debts
-            live on the{" "}
+            Debts live on the{" "}
             <Link className="text-accent underline" href="/debts">
               Debts
             </Link>{" "}
@@ -34,6 +35,19 @@ export default async function AccountsPage() {
         </div>
         <ButtonLink href="/connect">Connect a bank</ButtonLink>
       </div>
+
+      <DrillTiles
+        tiles={[
+          {
+            id: "counting",
+            label: "Counting toward FI",
+            testId: "accounts-counting",
+            figure: usdCents(total),
+            sub: `${accounts.filter((a) => a.includeInFi && a.bucket !== "excluded").length} of ${accounts.length} accounts`,
+            breakdown: accountsBreakdown(accounts),
+          },
+        ]}
+      />
 
       {BUCKETS.map((bucket) => {
         const rows = accounts.filter((a) => a.bucket === bucket);

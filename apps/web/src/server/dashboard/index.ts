@@ -5,8 +5,12 @@ import type { EngineWarning } from "@fire/engine/core";
 import { targetsAt } from "@fire/engine/levels";
 import { fiPortfolio, netWorth, real } from "@fire/engine/projection";
 import { accessibleFI, blendedWithdrawalTax } from "@fire/engine/withdrawal";
+import type { Breakdown } from "@/lib/breakdown";
 import { monthName } from "@/lib/format";
 import type { HouseholdPlan, SnapshotIssue } from "../snapshot";
+import { dashboardBreakdowns, type TileId } from "./breakdowns";
+
+export type { TileId } from "./breakdowns";
 
 export type LadderStatus = "reached" | "projected" | "not-within-plan";
 
@@ -20,6 +24,7 @@ export interface LadderRow {
   status: LadderStatus;
   when: string | null;
   age: number | null;
+  breakdown: Breakdown;
 }
 
 export interface ChartPoint {
@@ -48,11 +53,15 @@ export interface DashboardModel {
     portfolio: number;
     netWorth: number;
     savingsRate: number | null;
+    /** Income the savings rate divides by: the next 12 months, take-home plus pre-tax contributions. */
+    incomeFirstYear: number;
     spendingAnnual: number;
     retirementSpending: number;
     spendingSource: "manual" | "plaid";
   } | null;
   ladder: LadderRow[];
+  /** What each headline tile is made of (null until the plan can run). */
+  breakdowns: Record<TileId, Breakdown> | null;
   chart: ChartPoint[];
   retireLabel: string | null;
   chips: { label: string; value: string }[];
@@ -92,6 +101,7 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
       issues: plan.issues,
       headline: null,
       ladder: [],
+      breakdowns: null,
       chart: [],
       retireLabel: null,
       chips,
@@ -107,22 +117,7 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
   const t0 = r.levels;
   const fiRow = r.fiK !== null ? acc.rows[r.fiK] : undefined;
 
-  // First-year savings rate on the accumulation path.
-  let income = 0;
-  let contrib = 0;
-  let living = 0;
-  let interest = 0;
-  for (let k = 1; k <= 12 && k < acc.rows.length; k++) {
-    const row = acc.rows[k]!;
-    income += row.income;
-    contrib += row.contributions;
-    living += row.livingExpenses;
-    interest += acc.debt.schedule[k - 1]?.totalInterest ?? 0;
-  }
-  const gross = income + contrib;
-  const savingsRate = gross > 0 ? (gross - living - interest) / gross : null;
-
-  const ladder: LadderRow[] = r.ladder.map((l) => ({
+  const ladderRows: Omit<LadderRow, "breakdown">[] = r.ladder.map((l) => ({
     id: l.id,
     label: l.label,
     isDebt: ["highInterestDebtFree", "consumerDebtFree", "debtFree"].includes(l.id),
@@ -133,6 +128,9 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
     when: l.reachedMonth !== null ? monthName(l.reachedMonth) : null,
     age: l.reachedAge,
   }));
+  // What every number is made of; the first-year savings rate comes from the same split.
+  const bd = dashboardBreakdowns(plan, ladderRows)!;
+  const ladder: LadderRow[] = ladderRows.map((l) => ({ ...l, breakdown: bd.ladder[l.id]! }));
 
   const step = Math.max(1, Math.round(r.plan.rows.length / 160));
   const chart: ChartPoint[] = [];
@@ -188,12 +186,14 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
       fiMonths: r.fiK,
       portfolio: real(row0, fiPortfolio(row0)),
       netWorth: netWorth(row0),
-      savingsRate,
+      savingsRate: bd.firstYear.rate,
+      incomeFirstYear: bd.firstYear.gross,
       spendingAnnual: spendingNow,
       retirementSpending,
       spendingSource: plan.data.spendingSource,
     },
     ladder,
+    breakdowns: bd.tiles,
     chart,
     retireLabel,
     chips,

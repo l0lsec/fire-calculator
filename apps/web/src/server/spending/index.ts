@@ -16,7 +16,10 @@ import {
   setSpendingProfile,
   updateAccount,
 } from "@fire/db";
+import type { AnnualSpending } from "@fire/spending";
 import { z } from "zod";
+import { type Breakdown, type BreakdownLine, foldSlices } from "@/lib/breakdown";
+import { dateText } from "@/lib/format";
 import type { ActionResult } from "../forms";
 import { deriveHouseholdSpending, hasConnectedAccounts } from "../snapshot";
 
@@ -231,4 +234,111 @@ export async function undoCategoryEssential(ctx: Ctx, input: Record<string, stri
 export async function useMeasuredSpending(ctx: Ctx, use: boolean): Promise<ActionResult> {
   await setSpendingProfile(ctx.db, ctx.scope, { source: use ? "plaid" : "manual" });
   return { ok: true };
+}
+
+/** What each Spending-page total is made of (the drill-down behind its tiles). */
+export function spendingBreakdowns(
+  s: AnnualSpending,
+): Record<"annual" | "essentials" | "discretionary", Breakdown> {
+  const d = (cents: number) => cents / 100;
+  const living = d(s.livingCents);
+  const essentialLiving = d(s.livingEssentialCents);
+  const escrow = d(s.escrowCents);
+  const toCategories = { href: "#by-category", label: "By category, below" };
+  const measured = {
+    label: "Measured over",
+    value: `${s.monthsOfData} months, ${dateText(s.windowStart)} to ${dateText(s.windowEnd)}`,
+  };
+  const escrowLine: BreakdownLine[] = escrow
+    ? [{ op: "+", label: "Mortgage escrow", value: escrow, detail: "property tax and insurance, from Debts" }]
+    : [];
+  return {
+    annual: {
+      id: "annual",
+      title: "Annual spending",
+      intro:
+        "Everything you spent on living over the last 12 months from your connected accounts, plus mortgage escrow. Transfers, card payments, loan payments and investing are left out.",
+      chart: {
+        title: "Annual spending by category",
+        slices: foldSlices([
+          ...s.byCategory.map((c) => ({ label: categoryLabel(c.category), value: d(c.totalCents) })),
+          { label: "Mortgage escrow", value: escrow },
+        ]),
+      },
+      steps: [
+        {
+          lines: [
+            { op: "+", label: "Living spending", value: living, detail: "from your connected accounts" },
+            ...escrowLine,
+          ],
+          total: { label: "Annual spending", value: d(s.totalCents) },
+        },
+        ...(s.businessCents !== 0
+          ? [
+              {
+                title: "Who spent it",
+                lines: [
+                  { op: "+" as const, label: "Personal", value: living - d(s.businessCents) },
+                  {
+                    op: "+" as const,
+                    label: "Business",
+                    value: d(s.businessCents),
+                    detail: "from accounts marked as business",
+                  },
+                ],
+                total: { label: "Living spending", value: living },
+              },
+            ]
+          : []),
+      ],
+      facts: [measured],
+      links: [toCategories, { href: "/dashboard#spending", label: "Dashboard" }],
+    },
+    essentials: {
+      id: "essentials",
+      title: "Essentials",
+      intro:
+        "The spending you would keep even on a tight budget: groceries, housing, utilities, insurance and the like. It sets your Lean FI number.",
+      chart: {
+        title: "Essential and discretionary spending",
+        slices: foldSlices([
+          { label: "Essential living", value: essentialLiving },
+          { label: "Mortgage escrow", value: escrow },
+          { label: "Discretionary", value: d(s.discretionaryCents) },
+        ]),
+      },
+      steps: [
+        {
+          lines: [
+            {
+              op: "+",
+              label: "Essential living spending",
+              value: essentialLiving,
+              detail: "categories marked essential",
+            },
+            ...escrowLine,
+          ],
+          total: { label: "Essentials", value: d(s.essentialCents) },
+        },
+      ],
+      facts: [measured],
+      links: [toCategories, { href: "/dashboard#fi-number", label: "Dashboard" }],
+    },
+    discretionary: {
+      id: "discretionary",
+      title: "Discretionary",
+      intro: "Living spending that is not essential: the part you could cut.",
+      steps: [
+        {
+          lines: [
+            { op: "+", label: "Living spending", value: living },
+            { op: "-", label: "Essential living spending", value: essentialLiving },
+          ],
+          total: { label: "Discretionary", value: d(s.discretionaryCents) },
+        },
+      ],
+      facts: [measured],
+      links: [toCategories],
+    },
+  };
 }
