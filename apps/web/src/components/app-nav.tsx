@@ -36,6 +36,7 @@ export const PLACES: Place[] = [
     tabs: [
       { href: "/accounts", label: "Accounts" },
       { href: "/connections", label: "Connections" },
+      { href: "/ai-access", label: "AI access" },
     ],
     also: ["/connect"],
   },

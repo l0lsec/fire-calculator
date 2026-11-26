@@ -32,6 +32,9 @@ This is built to run on your own machine; nothing needs to be public.
   connection older than 12 hours when you open it; "Refresh now" and `pnpm sync` force one.
 - **Backups**: `pnpm backup` writes a SQL dump to `backups/` (git-ignored). Never run
   `supabase stop --no-backup`: it deletes the local database volume.
+- **AI assistants**: Accounts, AI access creates a key so Claude Code, Codex, Claude Desktop or any
+  MCP client can read your plan on your own subscription (the app never pays for AI). See
+  `docs/AI_ACCESS.md`.
 - **Checks**: the test suites share the local stack but only ever create and remove
   `@example.test` users, so they never touch your data.
 

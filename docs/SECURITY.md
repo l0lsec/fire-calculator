@@ -11,6 +11,7 @@ each control. It mirrors BUILD_PLAN section 12.
 | Plaid access tokens | `fire.plaid_items`, encrypted | Read access to a household's bank data until revoked |
 | Transactions, balances, debts, holdings | `fire.*` tables | Private financial history |
 | Session cookies | Browser | Act as the user |
+| AI access keys | Held by the user's AI client; `fire.api_tokens` stores only a SHA-256 | Read the plan (and, for write keys, make what-if changes) until revoked or expired |
 | Token encryption keys | Worker secret `TOKEN_ENCRYPTION_KEYS` | Decrypt every access token |
 | Plaid client secret | Worker secret `PLAID_SECRET` | Call Plaid as the app |
 
@@ -32,6 +33,7 @@ each control. It mirrors BUILD_PLAN section 12.
 | Secrets committed to git | `secrets` guard in CI; `.env*` ignored; build refuses a bundle containing local secret values | guards, `build-worker.mjs` |
 | Local `.env` baked into the Worker bundle | `build-worker.mjs` blanks OpenNext's env module and scans the output for every local secret value | T0.1 G3 |
 | Internal routes called from outside | Cron and queue routes require `Bearer CRON_SECRET` (constant-time compare) | T0.3 route crawl (they are not public pages) |
+| An AI access key is stolen or over-used | Keys minted only from an AAL2 session; stored as SHA-256 only; read-only by default; expiry, revoke (immediate) and creator-membership checked on every call; 120 requests/min per key; write tools never touch the baseline plan or delete data; foreign `Origin` refused (see `docs/AI_ACCESS.md`) | `ai-access` tests, e2e `ai-access.spec.ts`, T0.3 route crawl (401 without a key) |
 | Data kept after the user leaves | Disconnect calls `/item/remove`; "Delete everything" revokes every Item and purges all rows, leaving a tombstone with no personal data | T3.7 G2 |
 
 ## Not in scope
