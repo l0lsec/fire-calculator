@@ -15,7 +15,8 @@ export interface SetupStep {
 }
 
 export function setupSteps(
-  data: Pick<HouseholdData, "people" | "income" | "accounts" | "spendingProfile" | "derivedSpending">,
+  data: Pick<HouseholdData, "people" | "income" | "accounts" | "spendingProfile" | "derivedSpending"> &
+    Partial<Pick<HouseholdData, "incomeSource">>,
 ): SetupStep[] {
   const measured = (data.derivedSpending?.livingCents ?? 0) > 0;
   const estimated = (data.spendingProfile?.manualAnnualCents ?? 0) > 0;
@@ -39,7 +40,8 @@ export function setupSteps(
       n: 3,
       title: "Add your take-home pay",
       why: "What you earn minus what you spend is what you save toward FI.",
-      done: data.income.length > 0,
+      // Measured take-home pay from connected accounts counts once there is someone to own it.
+      done: data.income.length > 0 || (data.incomeSource === "measured" && data.people.length > 0),
     },
     {
       id: "savings",

@@ -56,6 +56,30 @@ test("business accounts: spending stays in the total and is shown apart", async 
   await expect(page.getByTestId("spending-business")).toHaveCount(0);
 });
 
+test("setup takes take-home pay and savings from connected accounts", async ({ page, context, baseURL }) => {
+  const user = await createVerifiedUser();
+  await signInContext(context, user, baseURL as string);
+  await page.goto("/setup?step=people");
+  await page.getByLabel("Name").fill("Sam");
+  await page.getByLabel("Birth month").fill(`${new Date().getFullYear() - 34}-04`);
+  await page.getByRole("button", { name: "Add person" }).click();
+  await expect(page.getByTestId("progress-count")).toHaveText("1 of 4 done");
+  await page.request.post("/api/plaid/link/exchange", {
+    data: { public_token: await fakePlaid.publicToken(), institution: null },
+  });
+  await page.goto("/setup?step=income");
+  // Spending, income and savings all come from the connected bank.
+  await expect(page.getByTestId("progress-count")).toHaveText("4 of 4 done");
+  const measured = page.getByTestId("setup-income-measured");
+  await expect(measured).toContainText("a month");
+  await expect(measured).toContainText("Your plan uses this");
+  // Manual income is tucked away for what the accounts cannot show.
+  await expect(page.getByRole("button", { name: "Add income" })).toBeHidden();
+  await page.goto("/setup?step=savings");
+  await expect(page.getByTestId("setup-savings-synced").locator("li").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add account" })).toBeHidden();
+});
+
 test("change debt strategy: the planner's choice is saved to the plan", async ({
   page,
   context,

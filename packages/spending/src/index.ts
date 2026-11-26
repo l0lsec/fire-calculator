@@ -9,6 +9,10 @@
 //   - loan payments are debt service, modeled by the debt engine;
 //   - mortgage escrow is reported from the mortgage record, not the payment;
 //   - investment contributions are saving, not spending;
+//   - payroll a business runs is spending (a business cost), never a transfer;
+//   - money arriving in a BUSINESS account from outside the linked accounts
+//     (card processor deposits, client payments) is income, so business
+//     revenue and business costs are both counted;
 //   - refunds net against their category.
 // Precedence: per-transaction override > household category rule > default.
 
@@ -120,6 +124,8 @@ export interface AnnualSpending {
   businessCents: number;
   /** The part of incomeCents received into business accounts. */
   businessIncomeCents: number;
+  /** Where income came from, largest first (annualized; business sources marked). */
+  incomeSources: { name: string; cents: number; business: boolean }[];
   /** Living spending per account, annualized. */
   byAccount: { accountId: string; livingCents: number }[];
   byCategory: CategoryTotal[];
@@ -325,12 +331,43 @@ export function cardPaymentTargets(
 
 // ---------- classification ----------
 
+/** Payroll a business runs ("INTUIT DES:PAYROLL", "PAYROLL DES:PAYROLL"): a cost, not a transfer. */
+const PAYROLL = /\bPAYROLL\b/i;
+/** Money coming back, not money earned. */
+const REVERSAL = /\bRETURN(ED)?\b|\bREVERS|\bREFUND|\bCHARGEBACK|\bADJUSTMENT\b/i;
+export const PAYROLL_CATEGORY = "BUSINESS_PAYROLL";
+
+/** A short source name for a deposit: "CliftonLarso-OSV DES:PAYROLL464 ..." becomes "CliftonLarso-OSV". */
+function sourceName(t: SpendingTx): string {
+  if (t.merchant) return t.merchant;
+  const head = t.name.split(/\s+(?:DES|ID|INDN|CO ID|PPD|WEB):/)[0]?.trim() || t.name;
+  return head
+    .replace(/\s+(?:Conf(?:irmation)?#|for ").*$/i, "")
+    .replace(/\s+\d{5,}.*$/, "")
+    .slice(0, 40);
+}
+
 function defaultClass(
   t: SpendingTx,
   account: SpendingAccount | undefined,
-): { class: TxClass; reason: string; flags: Flag[] } {
+): { class: TxClass; reason: string; flags: Flag[]; category?: string } {
   const p = t.pfcPrimary;
   const d = t.pfcDetailed ?? "";
+  if (t.amountCents > 0 && PAYROLL.test(t.name) && (p === "TRANSFER_OUT" || p === null)) {
+    return {
+      class: "living_expense",
+      reason: "payroll (a business cost)",
+      flags: [],
+      category: PAYROLL_CATEGORY,
+    };
+  }
+  if (account?.business && t.amountCents < 0 && p === "TRANSFER_IN" && !REVERSAL.test(t.name)) {
+    return {
+      class: "income",
+      reason: "money into your business from outside your linked accounts",
+      flags: [],
+    };
+  }
   if (p === "INCOME") return { class: "income", reason: "income category", flags: [] };
   if (p === "LOAN_DISBURSEMENTS") return { class: "ignore", reason: "loan disbursement", flags: [] };
   if (p === "TRANSFER_IN") return { class: "transfer", reason: "incoming transfer", flags: [] };
@@ -391,19 +428,22 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
 
   const classified: Classified[] = inWindow.map((t) => {
     const account = accounts.get(t.accountId);
-    const category = t.pfcDetailed ?? t.pfcPrimary ?? "UNCATEGORIZED";
+    let category = t.pfcDetailed ?? t.pfcPrimary ?? "UNCATEGORIZED";
     const pair = pairs.get(t.id) ?? null;
     let {
       class: cls,
       reason,
       flags,
+      category: specialCategory,
     } = pair
       ? {
           class: "transfer" as TxClass,
           reason: "matched transfer between linked accounts",
           flags: [] as Flag[],
+          category: undefined as string | undefined,
         }
       : defaultClass(t, account);
+    if (specialCategory) category = specialCategory;
     if (flags.includes("unlinked-card-payment")) {
       const card = cardFor(t);
       if (card) {
@@ -482,6 +522,7 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
   let businessLiving = 0;
   let businessIncome = 0;
   const perAccount = new Map<string, number>();
+  const sources = new Map<string, number>();
   const cats = new Map<string, CategoryTotal>();
   const monthly = new Map(win.months.map((m) => [m, 0]));
   for (const c of classified) {
@@ -489,6 +530,8 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
     if (c.class === "income") {
       income += -c.tx.amountCents;
       if (business) businessIncome += -c.tx.amountCents;
+      const key = `${business ? "b" : "p"}:${sourceName(c.tx)}`;
+      sources.set(key, (sources.get(key) ?? 0) - c.tx.amountCents);
     }
     if (c.class === "investment_contribution") invest += c.tx.amountCents;
     if (c.class === "debt_payment") debt += c.tx.amountCents;
@@ -528,6 +571,13 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
     debtPaymentCents: Math.round(debt * scale),
     businessCents: Math.round(businessLiving * scale),
     businessIncomeCents: Math.round(businessIncome * scale),
+    incomeSources: [...sources]
+      .map(([key, cents]) => ({
+        name: key.slice(2),
+        cents: Math.round(cents * scale),
+        business: key.startsWith("b:"),
+      }))
+      .sort((a, b) => b.cents - a.cents),
     byAccount: [...perAccount]
       .map(([accountId, cents]) => ({ accountId, livingCents: Math.round(cents * scale) }))
       .sort((a, b) => b.livingCents - a.livingCents),

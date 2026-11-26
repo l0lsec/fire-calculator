@@ -1,7 +1,8 @@
 import { ProgressBar, StepList } from "@/components/steps";
 import { ButtonLink, Card, Disclaimer } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
-import { age, duration, usd } from "@/lib/format";
+import { age, duration, usd, usdCents } from "@/lib/format";
+import { BUCKET_LABELS } from "@/server/accounts/labels";
 import { dashboardModel } from "@/server/dashboard";
 import { plaidConfigured } from "@/server/plaid/config";
 import { currentStep, type SetupStepId, setupSteps } from "@/server/setup";
@@ -27,6 +28,13 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const done = steps.filter((s) => s.done).length;
   const next = step ? steps.find((s) => s.n > step.n && !s.done) : undefined;
   const connected = hasConnectedAccounts(data);
+  const measured = data.incomeSource === "measured" ? data.measuredIncome : null;
+  const synced = data.accounts.filter(
+    (a) => a.source !== "manual" && a.type !== "credit" && a.type !== "loan" && a.bucket !== "excluded",
+  );
+  const handEntered = data.accounts.filter(
+    (a) => a.source === "manual" && a.type !== "credit" && a.type !== "loan",
+  );
 
   if (!step) {
     // The end of the flow: the payoff, and the one next thing to do.
@@ -115,25 +123,108 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       </div>
     ),
     income: data.people.length ? (
-      <>
-        {data.income.length ? (
-          <p className="text-sm text-ink-2">Added: {data.income.map((i) => i.name).join(", ")}.</p>
+      <div className="flex flex-col gap-4">
+        {measured ? (
+          <div className="flex flex-col gap-2" data-testid="setup-income-measured">
+            <p className="text-sm text-ink-2">
+              From your connected accounts:{" "}
+              <span className="num font-semibold text-ink">
+                {usdCents(measured.annualCents / 12)} a month
+              </span>{" "}
+              take-home ({usdCents(measured.annualCents)} over the last 12 months
+              {measured.businessAnnualCents > 0
+                ? `, ${usdCents(measured.businessAnnualCents)} of it into your business`
+                : ""}
+              ). Your plan uses this, and it updates as your accounts sync.
+            </p>
+            <ul className="divide-y divide-line text-sm">
+              {measured.sources.slice(0, 5).map((src) => (
+                <li key={`${src.business}-${src.name}`} className="flex justify-between gap-2 py-1.5">
+                  <span className="min-w-0 truncate">
+                    {src.name} {src.business ? <span className="text-xs text-accent">business</span> : null}
+                  </span>
+                  <span className="num text-ink-3">{usdCents(src.cents)}/yr</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : connected ? (
+          <p className="text-sm text-ink-2">
+            Your connected accounts show no pay coming in yet. Add your take-home pay below.
+          </p>
         ) : null}
-        <IncomeForm people={data.people.map((p) => ({ id: p.id, name: p.name }))} />
-      </>
+        {data.income.length ? (
+          <p className="text-sm text-ink-2">Added by you: {data.income.map((i) => i.name).join(", ")}.</p>
+        ) : null}
+        {measured ? (
+          <details>
+            <summary className="flex min-h-10 cursor-pointer items-center text-sm font-medium text-accent pointer-coarse:min-h-11">
+              Add income your accounts don&apos;t show
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              <p className="text-xs text-ink-3">
+                A pension, Social Security, or pay that lands in an account you have not connected. It is
+                added to the measured figure; entering your own take-home pay replaces it.
+              </p>
+              <IncomeForm people={data.people.map((p) => ({ id: p.id, name: p.name }))} />
+            </div>
+          </details>
+        ) : (
+          <IncomeForm people={data.people.map((p) => ({ id: p.id, name: p.name }))} />
+        )}
+      </div>
     ) : (
       <p className="text-sm text-ink-2">
         Add yourself in step 1 first, so the income has someone to belong to.
       </p>
     ),
     savings: (
-      <>
-        <p className="text-sm text-ink-2">
-          Retirement accounts, brokerage, savings. A connected bank adds its accounts for you; add others by
-          hand. Debts go on the Debts page.
-        </p>
-        <AccountForm />
-      </>
+      <div className="flex flex-col gap-4">
+        {synced.length ? (
+          <div className="flex flex-col gap-2" data-testid="setup-savings-synced">
+            <p className="text-sm text-ink-2">
+              From your connected accounts, kept up to date on every sync. Debts go on the Debts page.
+            </p>
+            <ul className="divide-y divide-line text-sm">
+              {synced.map((a) => (
+                <li key={a.id} className="flex justify-between gap-2 py-1.5">
+                  <span className="min-w-0 truncate">
+                    {a.name} {a.mask ? <span className="text-ink-3">...{a.mask}</span> : null}{" "}
+                    <span className="text-xs text-ink-3">{BUCKET_LABELS[a.bucket]}</span>
+                  </span>
+                  <span className="num">{usdCents(a.currentCents)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {handEntered.length ? (
+          <p className="text-sm text-ink-2">Added by you: {handEntered.map((a) => a.name).join(", ")}.</p>
+        ) : null}
+        {plaidConfigured() ? (
+          <div>
+            <ButtonLink href="/connect" variant={step.done ? "secondary" : "primary"}>
+              {connected ? "Connect another bank or brokerage" : "Connect a bank or brokerage"}
+            </ButtonLink>
+          </div>
+        ) : null}
+        {plaidConfigured() ? (
+          <details>
+            <summary className="flex min-h-10 cursor-pointer items-center text-sm font-medium text-accent pointer-coarse:min-h-11">
+              Add an account that can&apos;t be connected
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              <p className="text-xs text-ink-3">
+                Only for what a bank connection cannot see: a pension estimate, a property, an account at an
+                unsupported institution.
+              </p>
+              <AccountForm />
+            </div>
+          </details>
+        ) : (
+          <AccountForm />
+        )}
+      </div>
     ),
   };
 

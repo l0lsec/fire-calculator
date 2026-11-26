@@ -355,3 +355,75 @@ describe("business accounts", () => {
     ]);
   });
 });
+
+describe("payroll and business revenue", () => {
+  let n = 0;
+  const tx = (
+    accountId: string,
+    cents: number,
+    name: string,
+    primary: string | null,
+    detailed: string | null,
+  ): SpendingTx => ({
+    id: `r${++n}`,
+    accountId,
+    date: "2026-02-10",
+    amountCents: cents,
+    name,
+    merchant: null,
+    pfcPrimary: primary,
+    pfcDetailed: detailed,
+    pending: false,
+  });
+  const accounts: SpendingAccount[] = [
+    { id: "home", type: "depository", subtype: "checking" },
+    { id: "biz", type: "depository", subtype: "checking", business: true },
+  ];
+  const s = deriveSpending({
+    asOf: "2026-11-26",
+    accounts,
+    transactions: [
+      tx(
+        "biz",
+        175_878,
+        "INTUIT 79252958 DES:PAYROLL ID:17266980 INDN:SHOW UP SHOW OUT",
+        "TRANSFER_OUT",
+        "TRANSFER_OUT_OTHER_TRANSFER_OUT",
+      ),
+      tx(
+        "biz",
+        -250_000,
+        "INTUIT 84895043 DES:DEPOSIT ID:XXXX64118",
+        "TRANSFER_IN",
+        "TRANSFER_IN_OTHER_TRANSFER_IN",
+      ),
+      tx("biz", -5_000, "RETURN OF POSTED CHECK / ITEM", "TRANSFER_IN", "TRANSFER_IN_OTHER_TRANSFER_IN"),
+      tx("home", -700_000, "CliftonLarso-OSV DES:PAYROLL464 ID:1", "INCOME", "INCOME_SALARY"),
+      // A deposit from somewhere else into a PERSONAL account stays a transfer.
+      tx("home", -100_000, "WIRE TYPE:WIRE IN", "TRANSFER_IN", "TRANSFER_IN_WIRE"),
+    ],
+  });
+  const byName = (prefix: string) => s.classified.find((c) => c.tx.name.startsWith(prefix));
+
+  it("payroll a business runs is a business cost, not a transfer to review", () => {
+    const payroll = byName("INTUIT 79252958");
+    expect(payroll?.class).toBe("living_expense");
+    expect(payroll?.category).toBe("BUSINESS_PAYROLL");
+    expect(payroll?.flags).not.toContain("possible-spending");
+    // A paycheck landing in personal checking is still income, even though its name says PAYROLL.
+    expect(byName("CliftonLarso")?.class).toBe("income");
+  });
+
+  it("money into a business account from outside is income; reversals and personal deposits are not", () => {
+    expect(byName("INTUIT 84895043")?.class).toBe("income");
+    expect(byName("RETURN OF POSTED")?.class).toBe("transfer");
+    expect(byName("WIRE TYPE")?.class).toBe("transfer");
+    const year = (cents: number) => Math.round((cents * 12) / 9);
+    expect(s.incomeCents).toBe(year(950_000));
+    expect(s.businessIncomeCents).toBe(year(250_000));
+    expect(s.incomeSources).toEqual([
+      { name: "CliftonLarso-OSV", cents: year(700_000), business: false },
+      { name: "INTUIT", cents: year(250_000), business: true },
+    ]);
+  });
+});

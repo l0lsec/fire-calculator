@@ -118,6 +118,24 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       </Card>
 
       <Card title="Income">
+        {data.measuredIncome && data.measuredIncome.annualCents > 0 ? (
+          <p className="mb-3 text-sm text-ink-2" data-testid="plan-income-measured">
+            {data.incomeSource === "measured" ? (
+              <>
+                Take-home pay measured from your accounts:{" "}
+                <span className="num font-medium text-ink">
+                  {usdCents(data.measuredIncome.annualCents / 12)}/mo
+                </span>
+                . Income you add here is on top of it; adding your own take-home pay replaces it.
+              </>
+            ) : (
+              <>
+                Your accounts show {usdCents(data.measuredIncome.annualCents / 12)}/mo coming in. The plan
+                uses the take-home pay you entered instead; remove it to use the measured figure.
+              </>
+            )}
+          </p>
+        ) : null}
         {data.income.length ? (
           <ul className="mb-4 divide-y divide-line">
             {data.income.map((i) => (
