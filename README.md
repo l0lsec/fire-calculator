@@ -48,3 +48,9 @@ This is built to run on your own machine; nothing needs to be public.
 | `scripts/guards`, `scripts/verify` | Repository guards and gate scripts |
 
 Estimates for education and planning, based on your assumptions. Not financial advice.
+
+## License
+
+MIT, see `LICENSE`. Historical market data in `packages/engine/data/` is derived from Robert
+Shiller's public dataset; cite it if you share results. Plaid, Supabase and Cloudflare are
+third-party services under their own terms.
