@@ -64,12 +64,19 @@ export function retirementSpendingAt(input: EngineInput, age: number): { total: 
   const escrowAnnual = escrowMonthly(input) * 12;
   let total = input.spending.currentAnnual + escrowAnnual;
   let essential = input.spending.currentEssentialAnnual + escrowAnnual;
-  for (const adj of input.spending.retirementAdjustments) {
-    if (!inWindow(age, adj.fromAge, adj.untilAge)) continue;
+  for (const adj of activeAdjustments(input, age)) {
     total += adj.annual;
     if (adj.essential) essential += adj.annual;
   }
   return { total: Math.max(0, total), essential: Math.max(0, Math.min(essential, Math.max(0, total))) };
+}
+
+/** The retirement adjustments that apply at an age of the primary person (what retirementSpendingAt adds). */
+export function activeAdjustments(
+  input: EngineInput,
+  age: number,
+): EngineInput["spending"]["retirementAdjustments"] {
+  return input.spending.retirementAdjustments.filter((adj) => inWindow(age, adj.fromAge, adj.untilAge));
 }
 
 /** Guaranteed income (Social Security, pensions) active at an age, annual, today's dollars. */

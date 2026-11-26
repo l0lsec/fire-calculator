@@ -90,7 +90,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         {data.people.length < 2 ? <PersonForm /> : null}
       </Card>
 
-      <Card title="Spending today">
+      <Card id="spending" title="Spending today">
         {data.spendingSource === "plaid" && data.derivedSpending ? (
           <p className="mb-4 text-sm text-ink-2" data-testid="measured-spending">
             Measured from your connected accounts:{" "}
@@ -117,7 +117,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         ) : null}
       </Card>
 
-      <Card title="Income">
+      <Card id="income" title="Income">
         {data.measuredIncome && data.measuredIncome.annualCents > 0 ? (
           <p className="mb-3 text-sm text-ink-2" data-testid="plan-income-measured">
             {data.incomeSource === "measured" ? (
@@ -169,7 +169,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         )}
       </Card>
 
-      <Card title="Paycheck contributions">
+      <Card id="contributions" title="Paycheck contributions">
         <p className="mb-3 text-sm text-ink-3">
           Money that goes to retirement accounts before it reaches your bank.
         </p>
@@ -199,7 +199,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         <ContributionForm />
       </Card>
 
-      <Card title="How retirement spending differs from today">
+      <Card id="retirement-spending" title="How retirement spending differs from today">
         <p className="mb-3 text-sm text-ink-3">
           Retirement spending is not current spending. Each change is a named line, never a hidden multiplier.
         </p>
@@ -232,7 +232,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         <AdjustmentForm scenarioId={s.id} />
       </Card>
 
-      <Card title="Assumptions">
+      <Card id="assumptions" title="Assumptions">
         <p className="mb-4 text-sm text-ink-3">
           Return {pct(a.nominalReturn)} and inflation {pct(a.inflation)} imply a real return of about{" "}
           {pct((1 + a.nominalReturn) / (1 + a.inflation) - 1, 1)}.

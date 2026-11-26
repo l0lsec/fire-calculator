@@ -1,8 +1,10 @@
 import { yearMonth } from "@fire/engine/core";
 import { ButtonForm } from "@/components/action-form";
+import { DrillTiles } from "@/components/breakdown";
 import { Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
-import { pct, usdCents } from "@/lib/format";
+import { pct, usd, usdCents } from "@/lib/format";
+import { debtsBreakdowns } from "@/server/dashboard/breakdowns";
 import { DEBT_KIND_LABELS } from "@/server/debts";
 import { planForScenario, toEngineDebts } from "@/server/snapshot";
 import { deleteDebtAction } from "./actions";
@@ -28,6 +30,7 @@ export default async function DebtsPage() {
   const plan = await planForScenario(ctx);
   const debts = plan.data.debts;
   const engineDebts = toEngineDebts(debts).debts;
+  const bd = debtsBreakdowns(plan);
   const [y, m] = plan.asOf.split("-").map(Number) as [number, number];
   const startMonth = plan.input?.startMonth ?? y * 12 + (m - 1);
 
@@ -47,6 +50,33 @@ export default async function DebtsPage() {
             {i.message} Without it this debt is left out of the plan rather than treated as interest-free.
           </Notice>
         ))}
+
+      {debts.length ? (
+        <DrillTiles
+          tiles={[
+            {
+              id: "owed",
+              label: "Total owed",
+              testId: "debts-owed",
+              figure: usd(bd.owed.steps[0]?.total.value ?? 0),
+              sub: `${debts.filter((d) => d.balanceCents > 0).length} debts`,
+              breakdown: bd.owed,
+            },
+            ...(bd.fi
+              ? [
+                  {
+                    id: "fi-debt",
+                    label: "Added to your FI number",
+                    testId: "debts-fi-part",
+                    figure: usd(bd.fi.steps[0]?.total.value ?? 0),
+                    sub: "what owing it adds to your target",
+                    breakdown: bd.fi,
+                  },
+                ]
+              : []),
+          ]}
+        />
+      ) : null}
 
       <Card title="Your debts">
         {debts.length === 0 ? (

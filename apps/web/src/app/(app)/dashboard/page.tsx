@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DrillRow, DrillTiles } from "@/components/breakdown";
 import { ProjectionChart } from "@/components/charts/projection-chart";
 import { ProgressBar, StepList } from "@/components/steps";
 import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
@@ -26,44 +27,48 @@ function Ladder({ rows }: { rows: LadderRow[] }) {
   return (
     <ol className="flex flex-col gap-3" data-testid="fi-ladder">
       {rows.map((l) => (
-        <li key={l.id} data-testid={`ladder-${l.id}`} className="rounded-xl border border-line p-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="font-medium">{l.label}</span>
-            <span className="text-sm" data-testid={`ladder-${l.id}-when`}>
-              {l.status === "reached" ? (
-                <span className="font-medium text-accent">Reached</span>
-              ) : l.status === "projected" ? (
-                <>
-                  {l.when} <span className="text-ink-3">(age {age(l.age ?? 0)})</span>
-                </>
-              ) : (
-                <span className="text-ink-3">Not within the plan</span>
-              )}
-            </span>
-          </div>
-          {!l.isDebt ? (
+        <DrillRow
+          key={l.id}
+          testId={`ladder-${l.id}`}
+          breakdown={l.breakdown}
+          summary={
             <>
-              <div
-                className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-2"
-                role="progressbar"
-                aria-label={`${l.label} progress`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(l.progress * 100)}
-              >
-                <div
-                  className="h-full rounded-full bg-accent"
-                  style={{ width: `${Math.round(l.progress * 100)}%` }}
-                />
-              </div>
-              <p className="num mt-1 text-xs text-ink-3">
-                {usd(l.current)} of <span data-testid={`ladder-${l.id}-target`}>{usd(l.target)}</span>
-              </p>
+              <span className="flex w-full flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium text-ink">{l.label}</span>
+                <span className="text-sm text-ink" data-testid={`ladder-${l.id}-when`}>
+                  {l.status === "reached" ? (
+                    <span className="font-medium text-accent">Reached</span>
+                  ) : l.status === "projected" ? (
+                    <>
+                      {l.when} <span className="text-ink-3">(age {age(l.age ?? 0)})</span>
+                    </>
+                  ) : (
+                    <span className="text-ink-3">Not within the plan</span>
+                  )}
+                </span>
+              </span>
+              {!l.isDebt ? (
+                <>
+                  <span
+                    className="mt-2 block h-2 w-full overflow-hidden rounded-full bg-surface-2"
+                    aria-hidden="true"
+                  >
+                    <span
+                      className="block h-full rounded-full bg-accent"
+                      style={{ width: `${Math.round(l.progress * 100)}%` }}
+                    />
+                  </span>
+                  <span className="num mt-1 block text-xs text-ink-3">
+                    {usd(l.current)} of <span data-testid={`ladder-${l.id}-target`}>{usd(l.target)}</span> (
+                    {Math.round(l.progress * 100)}%)
+                  </span>
+                </>
+              ) : l.current > 0 ? (
+                <span className="num mt-1 block text-xs text-ink-3">{usd(l.current)} to go</span>
+              ) : null}
             </>
-          ) : l.current > 0 ? (
-            <p className="num mt-1 text-xs text-ink-3">{usd(l.current)} to go</p>
-          ) : null}
-        </li>
+          }
+        />
       ))}
     </ol>
   );
@@ -238,45 +243,63 @@ export default async function DashboardPage({
 
       {h ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <p className="text-xs text-ink-3">Your FI number</p>
-              <p className="num text-2xl font-semibold" data-testid="fi-target">
-                {usd(h.fiTarget)}
-              </p>
-              <p className="num text-xs text-ink-3">
-                {usd(h.spendingPart)} for spending{h.debtPart > 0 ? ` + ${usd(h.debtPart)} of debt` : ""}
-              </p>
-            </Card>
-            <Card>
-              <p className="text-xs text-ink-3">FI date</p>
-              <p className="num text-2xl font-semibold" data-testid="fi-when">
-                {h.fiWhen ?? "Not within the plan"}
-              </p>
-              <p className="text-xs text-ink-3">
-                {h.fiAge !== null && h.fiMonths !== null
-                  ? `age ${age(h.fiAge)}, in ${duration(h.fiMonths)}`
-                  : "Raise savings or lower spending"}
-              </p>
-            </Card>
-            <Card>
-              <p className="text-xs text-ink-3">Invested toward FI</p>
-              <p className="num text-2xl font-semibold" data-testid="fi-portfolio">
-                {usd(h.portfolio)}
-              </p>
-              <p className="num text-xs text-ink-3">Net worth {usd(h.netWorth)}</p>
-            </Card>
-            <Card>
-              <p className="text-xs text-ink-3">Savings rate</p>
-              <p className="num text-2xl font-semibold" data-testid="savings-rate">
-                {h.savingsRate === null ? "n/a" : pct(h.savingsRate, 0)}
-              </p>
-              <p className="num text-xs text-ink-3">
-                Spending {usd(h.spendingAnnual)}/yr (
-                {h.spendingSource === "plaid" ? "from your accounts" : "your estimate"})
-              </p>
-            </Card>
-          </div>
+          {m.breakdowns ? (
+            <DrillTiles
+              tiles={[
+                {
+                  id: "fi-number",
+                  label: "Your FI number",
+                  testId: "fi-target",
+                  figure: usd(h.fiTarget),
+                  sub: `${usd(h.spendingPart)} for spending${h.debtPart > 0 ? ` + ${usd(h.debtPart)} of debt` : ""}`,
+                  breakdown: m.breakdowns["fi-number"],
+                },
+                {
+                  id: "fi-date",
+                  label: "FI date",
+                  testId: "fi-when",
+                  figure: h.fiWhen ?? "Not within the plan",
+                  sub:
+                    h.fiAge !== null && h.fiMonths !== null
+                      ? `age ${age(h.fiAge)}, in ${duration(h.fiMonths)}`
+                      : "Raise savings or lower spending",
+                  breakdown: m.breakdowns["fi-date"],
+                },
+                {
+                  id: "invested",
+                  label: "Invested toward FI",
+                  testId: "fi-portfolio",
+                  figure: usd(h.portfolio),
+                  sub: "accounts counted toward FI",
+                  breakdown: m.breakdowns.invested,
+                },
+                {
+                  id: "net-worth",
+                  label: "Net worth",
+                  testId: "net-worth",
+                  figure: usd(h.netWorth),
+                  sub: "what you own minus what you owe",
+                  breakdown: m.breakdowns["net-worth"],
+                },
+                {
+                  id: "savings-rate",
+                  label: "Savings rate",
+                  testId: "savings-rate",
+                  figure: h.savingsRate === null ? "n/a" : pct(h.savingsRate, 0),
+                  sub: `of ${usd(h.incomeFirstYear)} income, next 12 months`,
+                  breakdown: m.breakdowns["savings-rate"],
+                },
+                {
+                  id: "spending",
+                  label: "Spending",
+                  testId: "spending-annual",
+                  figure: `${usd(h.spendingAnnual)}/yr`,
+                  sub: h.spendingSource === "plaid" ? "from your accounts" : "your estimate",
+                  breakdown: m.breakdowns.spending,
+                },
+              ]}
+            />
+          ) : null}
 
           {safeCard}
           {alertsCard}

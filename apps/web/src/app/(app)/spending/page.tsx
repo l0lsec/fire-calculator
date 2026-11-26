@@ -1,11 +1,13 @@
 import { getSpendingProfile } from "@fire/db";
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
+import { DrillTiles } from "@/components/breakdown";
+import { MonthlyBars } from "@/components/charts/monthly-bars";
 import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { dateText, usdCents } from "@/lib/format";
 import { effectiveSpendingSource, todayISO } from "@/server/snapshot";
-import { categoryLabel, FLAG_TEXT, spendingView } from "@/server/spending";
+import { categoryLabel, FLAG_TEXT, spendingBreakdowns, spendingView } from "@/server/spending";
 import {
   accountBusinessAction,
   categoryEssentialAction,
@@ -26,6 +28,7 @@ export default async function SpendingPage() {
   const usingMeasured = effectiveSpendingSource(profile, s) === "plaid";
   const hasEstimate = (profile?.manualAnnualCents ?? 0) > 0;
   const queue = s.reviewQueue.slice(0, 40);
+  const breakdowns = spendingBreakdowns(s);
 
   if (!connected) {
     return (
@@ -63,34 +66,54 @@ export default async function SpendingPage() {
         </Notice>
       ))}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <p className="text-xs text-ink-3">Annual spending</p>
-          <p className="num text-2xl font-semibold" data-testid="spending-total">
-            {usdCents(s.totalCents)}
-          </p>
-          <p className="num text-xs text-ink-3">includes escrow {usdCents(s.escrowCents)}</p>
-          {s.businessCents !== 0 ? (
-            <p className="num text-xs text-ink-3" data-testid="spending-business">
-              business {usdCents(s.businessCents)} · personal {usdCents(s.totalCents - s.businessCents)}
-            </p>
-          ) : null}
+      <DrillTiles
+        className="sm:grid-cols-3"
+        tiles={[
+          {
+            id: "annual",
+            label: "Annual spending",
+            testId: "spending-total",
+            figure: usdCents(s.totalCents),
+            sub: (
+              <>
+                includes escrow {usdCents(s.escrowCents)}
+                {s.businessCents !== 0 ? (
+                  <span className="block" data-testid="spending-business">
+                    business {usdCents(s.businessCents)} · personal {usdCents(s.totalCents - s.businessCents)}
+                  </span>
+                ) : null}
+              </>
+            ),
+            breakdown: breakdowns.annual,
+          },
+          {
+            id: "essentials",
+            label: "Essentials",
+            testId: "spending-essential",
+            figure: usdCents(s.essentialCents),
+            sub: "sets your Lean FI number",
+            breakdown: breakdowns.essentials,
+          },
+          {
+            id: "discretionary",
+            label: "Discretionary",
+            testId: "spending-discretionary",
+            figure: usdCents(s.discretionaryCents),
+            sub: queue.length ? `${queue.length} items left to review` : "All items reviewed",
+            breakdown: breakdowns.discretionary,
+          },
+        ]}
+      />
+
+      {s.monthly.some((m) => m.livingCents !== 0) ? (
+        <Card title="Month by month">
+          <MonthlyBars
+            data={s.monthly.map((m) => ({ month: m.month, cents: m.livingCents }))}
+            label="Living spending by month"
+            testId="spending-monthly"
+          />
         </Card>
-        <Card>
-          <p className="text-xs text-ink-3">Essentials</p>
-          <p className="num text-2xl font-semibold" data-testid="spending-essential">
-            {usdCents(s.essentialCents)}
-          </p>
-          <p className="text-xs text-ink-3">sets your Lean FI number</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-ink-3">Discretionary</p>
-          <p className="num text-2xl font-semibold">{usdCents(s.discretionaryCents)}</p>
-          <p className="text-xs text-ink-3">
-            {queue.length ? `${queue.length} items left to review` : "All items reviewed"}
-          </p>
-        </Card>
-      </div>
+      ) : null}
 
       <Card title="Plan basis">
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -245,7 +268,7 @@ export default async function SpendingPage() {
         </Card>
       ) : null}
 
-      <Card title="By category">
+      <Card id="by-category" title="By category">
         <ul className="divide-y divide-line">
           {s.byCategory.map((c) => (
             <li key={c.category} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
