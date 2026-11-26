@@ -61,7 +61,15 @@ export interface AccountForecast {
   /** Usual day-to-day spending from this account, per day (last 90 days, scheduled items left out). */
   paceDailyCents: number;
   /** First day the scheduled items alone take the balance below zero. */
-  shortfall: { date: string; cents: number; cause: string | null } | null;
+  shortfall: {
+    date: string;
+    /** That first day's low point, and the item that took it below zero. */
+    cents: number;
+    cause: string | null;
+    /** The deepest point before money brings it back (can be later and lower). */
+    worstCents: number;
+    worstDate: string;
+  } | null;
 }
 
 export interface TransferSuggestion {
@@ -243,7 +251,9 @@ export function forecastCash(opts: {
     const shortfall = firstNeg
       ? {
           date: firstNeg.date,
-          cents: low.cents,
+          cents: firstNeg.lowCents,
+          worstCents: low.cents,
+          worstDate: low.date,
           cause:
             items
               .filter((i) => i.date === firstNeg.date && i.deltaCents < 0)
@@ -298,9 +308,9 @@ export function forecastCash(opts: {
       nextPayday: payday ? { date: payday.date, cents: payday.deltaCents, name: payday.name } : null,
       daysToPayday,
       perDayCents,
-      billsBeforePaydayCents: -items
+      billsBeforePaydayCents: items
         .filter((i) => i.deltaCents < 0 && (!payday || i.date < payday.date))
-        .reduce((s, i) => s + i.deltaCents, 0),
+        .reduce((s, i) => s - i.deltaCents, 0),
       paceDailyCents,
       paceRunsOut: days.find((x) => x.paceCents < 0)?.date ?? null,
     };
@@ -313,7 +323,7 @@ export function forecastCash(opts: {
   const transfers: TransferSuggestion[] = [];
   for (const f of forecasts.filter((x) => x.role === "spending" && x.shortfall)) {
     const short = f.shortfall as NonNullable<AccountForecast["shortfall"]>;
-    const need = Math.ceil(-short.cents / 1000) * 1000;
+    const need = Math.ceil(-short.worstCents / 1000) * 1000;
     const from = [...spare]
       .filter(([id]) => id !== f.account.id)
       .sort((a, b) => b[1] - a[1])

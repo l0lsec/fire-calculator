@@ -207,12 +207,13 @@ export function buildAlerts(opts: {
         title: `Overdraft risk: ${f.account.name} on ${shortDate(s.date)}`,
         detail:
           `Bills due before money comes in take it to ${usd(s.cents)}` +
-          `${s.cause ? ` (${s.cause} on ${shortDate(s.date)})` : ""}.` +
+          `${s.cause ? ` (${s.cause} on ${shortDate(s.date)})` : ""}` +
+          `${s.worstCents < s.cents ? `, and to ${usd(s.worstCents)} by ${shortDate(s.worstDate)}` : ""}.` +
           (move
             ? ` Move ${usd(move.cents)} from ${names.get(move.fromAccountId) ?? "another account"} by ${shortDate(move.byDate)}.`
             : " Hold off on spending from it until then."),
         date: s.date,
-        amountCents: s.cents,
+        amountCents: s.worstCents,
       });
     }
     const sp = cash.spendable;

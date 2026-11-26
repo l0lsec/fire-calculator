@@ -213,7 +213,13 @@ describe("safe to spend", () => {
     });
     const chk = f.accounts.find((a) => a.account.id === "chk");
     // 1,000 - 100 = 900, then rent 1,500 on Dec 1 leaves -600.
-    expect(chk?.shortfall).toEqual({ date: "2026-12-01", cents: -60_000, cause: "LANDLORD LLC" });
+    expect(chk?.shortfall).toEqual({
+      date: "2026-12-01",
+      cents: -60_000,
+      cause: "LANDLORD LLC",
+      worstCents: -60_000,
+      worstDate: "2026-12-01",
+    });
     expect(f.spendable?.safeToSpendCents).toBe(0);
     expect(f.transfers).toEqual([
       { fromAccountId: "sav", toAccountId: "chk", cents: 60_000, byDate: "2026-11-30" },
@@ -225,6 +231,38 @@ describe("safe to spend", () => {
     expect(f.transfers.some((t) => t.toAccountId === "biz")).toBe(false);
     // Fees: one overdraft fee in the last 12 months.
     expect(f.feesCents).toBe(3_500);
+  });
+});
+
+describe("shortfall depth", () => {
+  it("names the first day below zero and the deeper point after it, and covers the deeper one", () => {
+    const h = household({ checkingCents: 100_000, groceryCents: 9_000 });
+    // A 50 gym fee on Dec 3 lands before Dec 4's pay: -600 on Dec 1, then -650 on Dec 3.
+    for (const d of ["2026-09-03", "2026-10-03", "2026-11-03"])
+      h.classified.push(
+        c("chk", d, 5_000, "PLANET GYM", "living_expense", "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS"),
+      );
+    const f = forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000 });
+    expect(f.accounts.find((a) => a.account.id === "chk")?.shortfall).toEqual({
+      date: "2026-12-01",
+      cents: -60_000,
+      cause: "LANDLORD LLC",
+      worstCents: -65_000,
+      worstDate: "2026-12-03",
+    });
+    expect(f.transfers[0]).toMatchObject({ fromAccountId: "sav", cents: 65_000, byDate: "2026-11-30" });
+    const alert = buildAlerts({
+      asOf: AS_OF,
+      recurring: [],
+      budgets: [],
+      classified: [],
+      accounts: [],
+      settings: { largeChargeCents: 10_000_000, lowBalanceCents: 0, billLeadDays: 0 },
+      cash: f,
+    }).find((x) => x.kind === "overdraft-risk");
+    expect(alert?.detail).toBe(
+      "Bills due before money comes in take it to -$600 (LANDLORD LLC on Dec 1), and to -$650 by Dec 3. Move $650 from Savings by Nov 30.",
+    );
   });
 });
 

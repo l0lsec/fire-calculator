@@ -105,7 +105,9 @@ export default async function SafeToSpendPage() {
                 after payday.{" "}
               </>
             ) : null}
-            {usdCents(sp.billsBeforePaydayCents)} in bills and payments come out first, and{" "}
+            {sp.billsBeforePaydayCents > 0
+              ? `${usdCents(sp.billsBeforePaydayCents)} in bills and payments come out first, and `
+              : "No bills come out before then, and "}
             {usdCents(cash.cushionCents)} stays as your cushion. Lowest point:{" "}
             <span className="num font-medium">{usdCents(sp.low.cents)}</span> on {short(sp.low.date)}.
           </p>
@@ -121,7 +123,8 @@ export default async function SafeToSpendPage() {
             return (
               <Notice key={f.account.id} tone="bad">
                 {names.get(f.account.id)} goes to {usdCents(s.cents)} on {short(s.date)}
-                {s.cause ? ` when ${s.cause} comes out` : ""}.{" "}
+                {s.cause ? ` when ${s.cause} comes out` : ""}
+                {s.worstCents < s.cents ? `, and to ${usdCents(s.worstCents)} by ${short(s.worstDate)}` : ""}.{" "}
                 {move
                   ? `Move ${usdCents(move.cents)} from ${names.get(move.fromAccountId)} by ${short(move.byDate)} to avoid an overdraft.`
                   : "Hold off on spending from it until money comes in."}
