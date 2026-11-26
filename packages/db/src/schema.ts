@@ -422,6 +422,57 @@ export const financekitDevices = fire.table(
   (t) => [uniqueIndex("financekit_devices_household_uq").on(t.householdId)],
 );
 
+/** Monthly spending budget per primary category (FOOD_AND_DRINK, ...). */
+export const budgets = fire.table(
+  "budgets",
+  {
+    id: id(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    category: text("category").notNull(),
+    monthlyCents: cents("monthly_cents").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("budgets_household_category_uq").on(t.householdId, t.category)],
+);
+
+/**
+ * Per-event state for alerts and recurring series, by key ("price:netflix|monthly:2026-11-05",
+ * "hide-recurring:apple|monthly|3"): dismissed in the app, or already sent as a Mac notification.
+ */
+export const alertState = fire.table(
+  "alert_state",
+  {
+    id: id(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("alert_state_household_key_uq").on(t.householdId, t.key)],
+);
+
+/** Alert thresholds and Mac notification preferences. */
+export const alertSettings = fire.table("alert_settings", {
+  householdId: uuid("household_id")
+    .primaryKey()
+    .references(() => households.id, { onDelete: "cascade" }),
+  largeChargeCents: cents("large_charge_cents").notNull().default(50_000),
+  lowBalanceCents: cents("low_balance_cents").notNull().default(50_000),
+  billLeadDays: integer("bill_lead_days").notNull().default(5),
+  macNotifications: boolean("mac_notifications").notNull().default(true),
+  weeklySummary: boolean("weekly_summary").notNull().default(true),
+  lastWeeklySummaryAt: timestamp("last_weekly_summary_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
 /** Written when a household deletes all its data; holds no personal data. */
 export const auditTombstones = fire.table("audit_tombstones", {
   id: id(),
@@ -450,4 +501,7 @@ export const HOUSEHOLD_TABLES = {
   scenarios,
   syncEvents,
   financekitDevices,
+  budgets,
+  alertState,
+  alertSettings,
 } as const;

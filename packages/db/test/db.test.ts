@@ -30,7 +30,7 @@ describe("migrations", () => {
     const tables = await t.pg.query<{ tablename: string; rowsecurity: boolean }>(
       "select tablename, rowsecurity from pg_tables where schemaname = 'fire' order by tablename",
     );
-    expect(tables.rows.length).toBe(18);
+    expect(tables.rows.length).toBe(21);
     for (const row of tables.rows) expect(row.rowsecurity).toBe(true);
   });
 });
@@ -157,6 +157,9 @@ async function seed(tag: string): Promise<Seeded> {
     keyIv: `iv-${tag}`,
     keyVersion: 1,
   });
+  await repos.setBudget(db, scope, "FOOD_AND_DRINK", 400_00);
+  await repos.dismissAlerts(db, scope, [`hide-recurring:gym-${tag}`]);
+  await repos.setAlertSettings(db, scope, { lowBalanceCents: 123_00 });
   const fkExternalId = `fk:${crypto.randomUUID()}`;
   await repos.upsertFinancekitAccount(db, scope, {
     plaidAccountId: fkExternalId,
@@ -208,7 +211,37 @@ describe("household isolation", () => {
   // against household A's ids. Reads must return nothing of A's; writes must
   // change nothing of A's (null / false / NotOwnedError).
   const fkDeviceOfA = async () => (await repos.getFinancekitDevice(db, A.scope))!;
+  const budgetOfA = async () => (await repos.listBudgets(db, A.scope)).map((b) => b.monthlyCents);
+  const stateOfA = async () =>
+    (await repos.listAlertState(db, A.scope)).map((r) => [r.key, Boolean(r.dismissedAt)]);
   const probes: Record<string, () => Promise<void>> = {
+    listBudgets: async () =>
+      expect((await repos.listBudgets(db, B.scope)).every((r) => own(r, B))).toBe(true),
+    setBudget: async () => {
+      await repos.setBudget(db, B.scope, "FOOD_AND_DRINK", 1);
+      await repos.setBudget(db, B.scope, "FOOD_AND_DRINK", null);
+      expect(await budgetOfA()).toEqual([400_00]);
+    },
+    listAlertState: async () =>
+      expect((await repos.listAlertState(db, B.scope)).every((r) => own(r, B))).toBe(true),
+    dismissAlerts: async () => {
+      await repos.dismissAlerts(db, B.scope, ["hide-recurring:gym-A"]);
+      expect(await stateOfA()).toEqual([["hide-recurring:gym-A", true]]);
+    },
+    markAlertsNotified: async () => {
+      await repos.markAlertsNotified(db, B.scope, ["hide-recurring:gym-A"]);
+      expect((await repos.listAlertState(db, A.scope))[0]?.notifiedAt).toBeNull();
+    },
+    restoreAlerts: async () => {
+      await repos.restoreAlerts(db, B.scope, ["hide-recurring:gym-A"]);
+      expect(await stateOfA()).toEqual([["hide-recurring:gym-A", true]]);
+    },
+    getAlertSettings: async () =>
+      expect((await repos.getAlertSettings(db, B.scope)).householdId).toBe(B.scope.householdId),
+    setAlertSettings: async () => {
+      await repos.setAlertSettings(db, B.scope, { lowBalanceCents: 1 });
+      expect((await repos.getAlertSettings(db, A.scope)).lowBalanceCents).toBe(123_00);
+    },
     getFinancekitDevice: async () => expect(own(await repos.getFinancekitDevice(db, B.scope), B)).toBe(true),
     updateFinancekitDevice: async () => {
       await repos.updateFinancekitDevice(db, B.scope, { lastError: "B only" });

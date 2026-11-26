@@ -27,7 +27,13 @@ stack; uses a fake Plaid API), and the gate ledgers under `.unlazy/fire-v1/gates
 3. Restart `pnpm dev`, connect your banks on Connections, review Spending, and spot-check
    three balances against your bank.
 4. Freshness without webhooks: the app re-syncs connections older than 12 hours when opened;
-   `pnpm sync` syncs everything now (schedule it with launchd if you like).
+   `pnpm sync` syncs everything now. `pnpm schedule install [HH:MM]` adds a per-user
+   LaunchAgent that runs `pnpm sync` and `pnpm notify` daily (default 08:00, log in
+   `~/Library/Logs/fire-planner.log`); `pnpm schedule uninstall` removes it and
+   `pnpm schedule status` shows it. Re-run `install` if you change Node or pnpm versions.
+   `pnpm notify` shows new alerts as Mac notifications (each once) and a weekly summary on
+   Sundays; `pnpm notify --dry-run` prints them instead. Thresholds and both switches are on
+   the Alerts page.
 5. Some large banks use OAuth in Link; if one fails to connect, check the Plaid dashboard's
    OAuth institution registration for your team.
 6. `pnpm backup` regularly; restore with

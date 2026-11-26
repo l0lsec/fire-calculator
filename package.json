@@ -24,7 +24,9 @@
     "e2e": "playwright test -c e2e/playwright.config.ts",
     "sync": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/sync-all.ts",
     "backup": "node scripts/backup.mjs",
-    "verify:financekit": "node --import tsx scripts/verify/financekit-swift-format.ts"
+    "verify:financekit": "node --import tsx scripts/verify/financekit-swift-format.ts",
+    "notify": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/notify.ts",
+    "schedule": "node scripts/schedule.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",

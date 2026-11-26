@@ -5,6 +5,7 @@ import { requireContext } from "@/lib/auth/context";
 import { age, duration, pct, usd, usdCents } from "@/lib/format";
 import { dashboardModel, type LadderRow } from "@/server/dashboard";
 import { DEBT_KIND_LABELS } from "@/server/debts";
+import { loadInsights } from "@/server/insights";
 import { planForScenario } from "@/server/snapshot";
 import { RateEntry, type RateNeeded } from "./rate-entry";
 
@@ -70,7 +71,8 @@ export default async function DashboardPage({
 }) {
   const ctx = await requireContext();
   const { scenario } = await searchParams;
-  const plan = await planForScenario(ctx, scenario);
+  const [plan, insights] = await Promise.all([planForScenario(ctx, scenario), loadInsights(ctx)]);
+  const topAlerts = insights.alerts.slice(0, 3);
   const m = dashboardModel(plan);
   const h = m.headline;
   const debtsById = new Map(plan.data.debts.map((d) => [d.id, d]));
@@ -102,6 +104,28 @@ export default async function DashboardPage({
           </li>
         </ul>
       </div>
+
+      {topAlerts.length ? (
+        <Card
+          title={`Alerts (${insights.alerts.length})`}
+          action={
+            <Link href="/alerts" className="text-sm text-accent underline">
+              See all
+            </Link>
+          }
+        >
+          <ul className="flex flex-col gap-2" data-testid="dashboard-alerts">
+            {topAlerts.map((a) => (
+              <li key={a.key}>
+                <Notice tone={a.severity}>
+                  <span className="font-medium">{a.title}</span>{" "}
+                  <span className="text-xs opacity-80">{a.detail}</span>
+                </Notice>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       {m.issues.length ? (
         <Card title={m.ready ? "Finish your plan" : "Let's set up your plan"}>
