@@ -1,11 +1,11 @@
 import type { CashFlowItem, FlowKind } from "@fire/spending";
-import { ActionForm, FormInput } from "@/components/action-form";
+import { ActionForm, ButtonForm, FormInput, FormSelect } from "@/components/action-form";
 import { CashChart } from "@/components/charts/cash-chart";
 import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
 import { loadInsights } from "@/server/insights";
-import { saveCushionAction } from "./actions";
+import { addBillAction, removeBillAction, saveCushionAction } from "./actions";
 
 export const metadata = { title: "Safe to spend | FIRE Planner" };
 
@@ -29,11 +29,18 @@ const day = (iso: string) =>
 const short = (iso: string) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const signed = (cents: number) => `${cents > 0 ? "+" : ""}${usdCents(cents)}`;
+const HOW_OFTEN: Record<string, string> = {
+  weekly: "every week",
+  biweekly: "every 2 weeks",
+  monthly: "monthly",
+  quarterly: "every 3 months",
+  yearly: "yearly",
+};
 const dollarsIn = (cents: number) => (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 export default async function SafeToSpendPage() {
   const ctx = await requireContext();
-  const { cash, connected } = await loadInsights(ctx);
+  const { cash, connected, scheduledBills } = await loadInsights(ctx);
   const sp = cash.spendable;
   const names = new Map(
     cash.accounts.map((f) => [
@@ -160,6 +167,7 @@ export default async function SafeToSpendPage() {
                   <span className="font-medium">{i.name}</span>{" "}
                   <span className="text-xs text-ink-3">
                     {KIND[i.kind]}
+                    {i.scheduledId ? ", added by you" : ""}
                     {i.late ? ", was due earlier" : ""}
                     {i.confidence === "likely" ? ", seen twice" : ""} · {names.get(i.accountId)}
                   </span>
@@ -188,8 +196,59 @@ export default async function SafeToSpendPage() {
         )}
         <p className="mt-2 text-xs text-ink-3">
           Right-hand figure: your spending accounts together after each item. Bills and pay are the ones that
-          repeat in your history; one-off charges cannot be predicted.
+          repeat in your history, plus bills you add below; one-off charges cannot be predicted.
         </p>
+      </Card>
+
+      <Card title="Bills you know are coming">
+        <p className="mb-3 text-sm text-ink-3">
+          For a new bill your bank history cannot show yet, like a new insurance premium. It is counted on its
+          dates until the same charge shows up in your account.
+        </p>
+        {scheduledBills.length ? (
+          <ul className="mb-4 divide-y divide-line" data-testid="safe-bills">
+            {scheduledBills.map((b) => (
+              <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <span className="min-w-0">
+                  <span className="font-medium">{b.name}</span>{" "}
+                  <span className="text-xs text-ink-3">
+                    {HOW_OFTEN[b.cadence]}, next {day(b.dueDate)} · {names.get(b.accountId) ?? "an account"}
+                  </span>
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="num">{usdCents(b.amountCents, { cents: true })}</span>
+                  <ButtonForm
+                    action={removeBillAction}
+                    label="Remove"
+                    hidden={{ id: b.id }}
+                    undo={addBillAction}
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <ActionForm action={addBillAction} submitLabel="Add bill" resetOnSuccess testId="bill-form">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormInput name="name" label="Name" placeholder="Life insurance premium" />
+            <FormInput name="amount" label="Amount ($)" inputMode="decimal" placeholder="665.42" />
+            <FormSelect name="cadence" label="How often" defaultValue="monthly">
+              {Object.entries(HOW_OFTEN).map(([k, label]) => (
+                <option key={k} value={k}>
+                  {label}
+                </option>
+              ))}
+            </FormSelect>
+            <FormInput name="nextDate" label="Next due" type="date" min={cash.asOf} />
+            <FormSelect name="accountId" label="Comes out of" defaultValue={sp.accountIds[0]}>
+              {cash.accounts.map((f) => (
+                <option key={f.account.id} value={f.account.id}>
+                  {names.get(f.account.id)}
+                </option>
+              ))}
+            </FormSelect>
+          </div>
+        </ActionForm>
       </Card>
 
       <Card title="By account">
@@ -256,6 +315,10 @@ export default async function SafeToSpendPage() {
             Bills, card payments and transfers that repeat in each account&apos;s history are placed on their
             next dates. A bill that is late is assumed due today; one that varies is assumed at its higher
             recent amount.
+          </li>
+          <li>
+            Bills you add are placed on their dates. Once the same charge appears in the account (posted,
+            pending or repeating) on about that date, the bank&apos;s figure is used instead.
           </li>
           <li>
             Pay counts only after it has arrived three times on a steady schedule, at its lower recent amount,

@@ -39,6 +39,19 @@ export interface CashFlowItem {
   confidence: "likely" | "confirmed";
   /** Was due before today and has not posted yet. */
   late: boolean;
+  /** Set when the user added this bill by hand (its scheduled bill id). */
+  scheduledId?: string;
+}
+
+/** A bill the user knows is coming that the history cannot show yet. */
+export interface ScheduledBill {
+  id: string;
+  accountId: string;
+  name: string;
+  amountCents: number;
+  cadence: Cadence;
+  /** The due date as entered; earlier dates are assumed paid and later ones follow the cadence. */
+  nextDate: string;
 }
 
 export interface ForecastDay {
@@ -159,6 +172,8 @@ export function forecastCash(opts: {
   horizonDays?: number;
   /** Merchant keys the user marked "not recurring". */
   hiddenMerchants?: Set<string>;
+  /** Bills added by hand; each is dropped on a date where the history already has the charge. */
+  scheduled?: ScheduledBill[];
 }): CashForecast {
   const { asOf, cushionCents } = opts;
   const horizon = opts.horizonDays ?? 30;
@@ -225,6 +240,48 @@ export function forecastCash(opts: {
           cadence: s.cadence,
           confidence: s.confidence,
           late,
+        });
+      }
+    }
+
+    // Bills added by hand, on each date in the window, unless the bank already accounts for it:
+    // a repeating charge from the history near that date, a pending charge, or one already posted.
+    const near = (cents: number, want: number) => Math.abs(cents - want) <= 0.1 * want;
+    const found = items.filter((i) => i.deltaCents < 0);
+    for (const bill of (opts.scheduled ?? []).filter((b) => b.accountId === account.id)) {
+      for (let d = nextDue(bill, asOf); dayNum(d) <= end; d = advance(d, bill.cadence, STEP[bill.cadence])) {
+        const at = dayNum(d);
+        if (found.some((i) => near(-i.deltaCents, bill.amountCents) && Math.abs(dayNum(i.date) - at) <= 5))
+          continue;
+        const hit = pendingLeft.findIndex(
+          (p) => near(p.amountCents, bill.amountCents) && Math.abs(dayNum(p.date) - at) <= 7,
+        );
+        if (hit >= 0) {
+          pendingLeft.splice(hit, 1);
+          continue;
+        }
+        if (
+          at - today <= 5 &&
+          mine.some(
+            (c) =>
+              near(c.tx.amountCents, bill.amountCents) &&
+              dayNum(c.tx.date) >= at - 5 &&
+              dayNum(c.tx.date) <= today,
+          )
+        )
+          continue;
+        items.push({
+          key: `manual:${bill.id}@${d}`,
+          seriesKey: `manual:${bill.id}`,
+          accountId: account.id,
+          name: bill.name,
+          date: d,
+          deltaCents: -bill.amountCents,
+          kind: "bill",
+          cadence: bill.cadence,
+          confidence: "confirmed",
+          late: false,
+          scheduledId: bill.id,
         });
       }
     }
@@ -359,6 +416,13 @@ export function forecastCash(opts: {
     transfers,
     feesCents,
   };
+}
+
+/** A bill's next due date on or after `asOf`: earlier dates are assumed paid. */
+export function nextDue(bill: Pick<ScheduledBill, "cadence" | "nextDate">, asOf: string): string {
+  let d = bill.nextDate;
+  while (d < asOf) d = advance(d, bill.cadence, STEP[bill.cadence]);
+  return d;
 }
 
 /** "Zelle payment to HAYLEY B for \"Nov\"; Conf# X" becomes "Zelle payment to HAYLEY B". */

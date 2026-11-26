@@ -1,13 +1,16 @@
 // Subscriptions and bills, budgets, and alerts: one loader shared by the
 // pages and the Mac notifier (scripts/notify.ts).
 import {
+  addScheduledBill,
   type Db,
+  deleteScheduledBill,
   dismissAlerts,
   getAlertSettings,
   type HouseholdScope,
   listAccounts,
   listAlertState,
   listBudgets,
+  listScheduledBills,
   restoreAlerts,
   setAlertSettings,
   setBudget,
@@ -16,10 +19,12 @@ import {
   type Alert,
   budgetReport,
   buildAlerts,
+  type Cadence,
   categoryName,
   detectRecurring,
   forecastCash,
   monthlyAverages,
+  nextDue,
   type RecurringSeries,
 } from "@fire/spending";
 import { z } from "zod";
@@ -43,14 +48,23 @@ export function nextMonthStart(asOf: string): string {
 export { categoryName };
 
 export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
-  const [current, history, accounts, budgetRows, state, settings] = await Promise.all([
+  const [current, history, accounts, budgetRows, state, settings, billRows] = await Promise.all([
     deriveHouseholdSpending(ctx, nextMonthStart(asOf)),
     deriveHouseholdSpending(ctx, asOf),
     listAccounts(ctx.db, ctx.scope),
     listBudgets(ctx.db, ctx.scope),
     listAlertState(ctx.db, ctx.scope),
     getAlertSettings(ctx.db, ctx.scope),
+    listScheduledBills(ctx.db, ctx.scope),
   ]);
+  const scheduled = billRows.map((b) => ({
+    id: b.id,
+    accountId: b.accountId,
+    name: b.name,
+    amountCents: b.amountCents,
+    cadence: b.cadence as Cadence,
+    nextDate: b.nextDate,
+  }));
   const dismissed = new Set(state.filter((s) => s.dismissedAt).map((s) => s.key));
   const notified = new Set(state.filter((s) => s.notifiedAt).map((s) => s.key));
 
@@ -83,6 +97,7 @@ export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
     pending: current.pending,
     cushionCents: settings.lowBalanceCents,
     hiddenMerchants: new Set(hidden.map((h) => h.key.split("|")[0] as string)),
+    scheduled,
   });
 
   const alertsAll = buildAlerts({
@@ -133,6 +148,10 @@ export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
     },
     budgets,
     cash,
+    /** Bills added by hand, soonest first, with the next date each is due. */
+    scheduledBills: scheduled
+      .map((b) => ({ ...b, dueDate: nextDue(b, asOf) }))
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.name.localeCompare(b.name)),
     week: { spentCents: last7, previousCents: prev7 },
     alerts: alertsAll.filter((a) => !dismissed.has(a.key)),
     unnotified: (alerts: Alert[]) => alerts.filter((a) => !notified.has(a.key)),
@@ -228,6 +247,8 @@ export async function saveAlertSettings(ctx: Ctx, input: Record<string, string>)
   return { ok: true };
 }
 
+const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+
 const CushionForm = z.object({ cushion: dollars({ min: 0, max: 1_000_000 }) });
 
 /** The cushion Safe to spend keeps back; it is also the low-balance alert level. */
@@ -241,9 +262,69 @@ export async function saveCushion(
   await setAlertSettings(ctx.db, ctx.scope, { lowBalanceCents: cents });
   const { cash } = await loadInsights(ctx);
   const safe = cash.spendable?.safeToSpendCents ?? 0;
-  const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
   return {
     ok: true,
     data: { message: `Cushion set to ${usd(cents)}. Safe to spend is now ${usd(safe)}.` },
+  };
+}
+
+// ---------- bills added by hand ----------
+
+export const CADENCES = ["weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
+
+const BillForm = z.object({
+  name: z.string().trim().min(1, "Name the bill").max(80, "Keep it under 80 characters"),
+  amount: dollars({ min: 1, max: 1_000_000 }),
+  cadence: z.enum(CADENCES, { message: "Choose how often it comes out" }),
+  nextDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter the next date it comes out"),
+  accountId: z.string().uuid("Choose the account it comes out of"),
+});
+
+/** Add a bill Safe to spend should count; says what Safe to spend is now. */
+export async function addBill(
+  ctx: Ctx,
+  input: Record<string, string>,
+): Promise<ActionResult<{ message: string }>> {
+  const parsed = parseForm(BillForm, input);
+  if ("result" in parsed) return parsed.result as ActionResult<{ message: string }>;
+  const v = parsed.data;
+  const account = (await listAccounts(ctx.db, ctx.scope)).find((a) => a.id === v.accountId);
+  if (!account || account.type !== "depository")
+    return { ok: false, fieldErrors: { accountId: "Choose a checking or savings account" } };
+  await addScheduledBill(ctx.db, ctx.scope, {
+    accountId: v.accountId,
+    name: v.name,
+    amountCents: v.amount as number,
+    cadence: v.cadence,
+    nextDate: v.nextDate,
+  });
+  const { cash } = await loadInsights(ctx);
+  return {
+    ok: true,
+    data: { message: `Added ${v.name}. Safe to spend is now ${usd(cash.spendable?.safeToSpendCents ?? 0)}.` },
+  };
+}
+
+/** Delete a bill added by hand; Undo adds it back with the same details. */
+export async function removeBill(
+  ctx: Ctx,
+  id: string,
+): Promise<ActionResult<{ message: string; undo: Record<string, string> }>> {
+  if (!z.string().uuid().safeParse(id).success)
+    return { ok: false, error: "That bill is gone; reload the page." };
+  const row = await deleteScheduledBill(ctx.db, ctx.scope, id);
+  if (!row) return { ok: false, error: "That bill is gone; reload the page." };
+  return {
+    ok: true,
+    data: {
+      message: `Removed ${row.name}.`,
+      undo: {
+        name: row.name,
+        amount: (row.amountCents / 100).toFixed(2),
+        cadence: row.cadence,
+        nextDate: row.nextDate,
+        accountId: row.accountId,
+      },
+    },
   };
 }

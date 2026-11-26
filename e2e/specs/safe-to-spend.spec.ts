@@ -51,3 +51,48 @@ test("safe to spend forecasts the connected checking account and follows the cus
   await page.goto("/dashboard");
   await expect(page.getByTestId("dashboard-safe")).toContainText("$0");
 });
+
+test("a bill added by hand is counted on its date, and Remove can be undone", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const user = await createVerifiedUser();
+  await signInContext(context, user, baseURL as string);
+  await page.goto("/dashboard");
+  await page.request.post("/api/plaid/link/exchange", {
+    data: { public_token: await fakePlaid.publicToken(), institution: null },
+  });
+  await page.goto("/safe-to-spend");
+  const amount = async () => dollars(await page.getByTestId("safe-amount").textContent());
+  const before = await amount();
+  const upcoming = page.getByTestId("safe-upcoming");
+
+  // A typo is caught and the typed values stay.
+  const form = page.getByTestId("bill-form");
+  await form.getByLabel("Name").fill("Life insurance premium");
+  await form.getByLabel("Amount ($)").fill("lots");
+  await form.getByRole("button", { name: "Add bill" }).click();
+  await expect(form).toContainText("Enter a dollar amount");
+  await expect(form.getByLabel("Name")).toHaveValue("Life insurance premium");
+
+  // Due tomorrow (the tests pin today to Nov 25), so it falls before payday.
+  await form.getByLabel("Amount ($)").fill("1,000,000");
+  await form.getByLabel("Next due").fill("2026-11-26");
+  await form.getByRole("button", { name: "Add bill" }).click();
+  await expect(form).toContainText("Added Life insurance premium. Safe to spend is now $0.00");
+  await page.reload();
+  await expect(page.getByTestId("safe-bills")).toContainText("Life insurance premium");
+  await expect(upcoming).toContainText("added by you");
+  await expect(page.getByTestId("safe-amount")).toHaveText("$0");
+
+  // Remove takes it out; Undo puts it back.
+  const bills = page.getByTestId("safe-bills");
+  await bills.getByRole("button", { name: "Remove" }).click();
+  const toast = page.getByTestId("toast");
+  await expect(toast).toContainText("Removed Life insurance premium.");
+  await expect.poll(amount).toBe(before);
+  await toast.getByTestId("toast-undo").click();
+  await expect(page.getByTestId("safe-bills")).toContainText("Life insurance premium");
+  await expect.poll(amount).toBe(0);
+});

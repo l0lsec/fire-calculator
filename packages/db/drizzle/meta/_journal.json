@@ -43,6 +43,13 @@
       "when": 1795713629280,
       "tag": "0005_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795732824284,
+      "tag": "0006_scheduled_bills",
+      "breakpoints": true
     }
   ]
 }

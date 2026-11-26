@@ -6,6 +6,8 @@ import {
   type CashAccount,
   type Classified,
   forecastCash,
+  nextDue,
+  type ScheduledBill,
   type SpendingTx,
   type TxClass,
   weekOf,
@@ -334,5 +336,89 @@ describe("cash alerts", () => {
     expect(
       alertsFor(200_000, 9_000).filter((a) => a.kind === "spending-pace" || a.kind === "overdraft-risk"),
     ).toEqual([]);
+  });
+});
+
+describe("bills added by hand", () => {
+  const bill = (b: Partial<ScheduledBill>): ScheduledBill => ({
+    id: "b1",
+    accountId: "chk",
+    name: "LIFE POLICY",
+    amountCents: 30_000,
+    cadence: "quarterly",
+    nextDate: "2026-11-30",
+    ...b,
+  });
+
+  it("go out on their date and lower safe to spend like any other bill", () => {
+    const h = household({ checkingCents: 200_000, groceryCents: 9_000 });
+    const f = forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000, scheduled: [bill({})] });
+    // By hand: 2,000 - 100 late phone = 1,900; Nov 30 policy -300 = 1,600; Dec 1 rent -1,500 = 100.
+    // The next quarter (Feb 28) is outside the 30 days.
+    expect(f.spendable?.low).toEqual({ date: "2026-12-01", cents: 10_000 });
+    // 100 is under the 250 cushion, so nothing is safe to spend.
+    expect(f.spendable?.maxTodayCents).toBe(0);
+    expect(f.spendable?.safeToSpendCents).toBe(0);
+    const mine = f.upcoming.filter((i) => i.scheduledId === "b1");
+    expect(mine.map((i) => [i.date, i.name, i.deltaCents, i.kind])).toEqual([
+      ["2026-11-30", "LIFE POLICY", -30_000, "bill"],
+    ]);
+    expect(mine[0]?.balanceAfterCents).toBe(160_000);
+  });
+
+  it("roll a due date already past forward by the cadence, and repeat monthly ones", () => {
+    expect(nextDue({ cadence: "monthly", nextDate: "2026-10-23" }, AS_OF)).toBe("2026-12-23");
+    expect(nextDue({ cadence: "monthly", nextDate: AS_OF }, AS_OF)).toBe(AS_OF);
+    const h = household({ checkingCents: 200_000, groceryCents: 9_000 });
+    const f = forecastCash({
+      asOf: AS_OF,
+      ...h,
+      cushionCents: 0,
+      scheduled: [bill({ cadence: "monthly", amountCents: 5_000, nextDate: "2026-10-23" })],
+    });
+    // Window ends Dec 25: only Dec 23.
+    expect(f.upcoming.filter((i) => i.scheduledId).map((i) => i.date)).toEqual(["2026-12-23"]);
+  });
+
+  it("are not counted twice once the bank shows the charge", () => {
+    const h = household({ checkingCents: 200_000, groceryCents: 9_000 });
+    // Already a repeating charge in the history: Verizon's 100 on Dec 24.
+    const repeat = bill({
+      id: "phone",
+      name: "Phone",
+      cadence: "monthly",
+      amountCents: 10_000,
+      nextDate: "2026-12-24",
+    });
+    // Already posted two days ago for a bill due tomorrow.
+    h.classified.push(
+      c("chk", "2026-11-24", 4_000, "NEW YORK LIFE", "living_expense", "GENERAL_SERVICES_INSURANCE"),
+    );
+    const posted = bill({ id: "posted", cadence: "monthly", amountCents: 4_000, nextDate: "2026-11-27" });
+    // Pending for a bill due the day after.
+    h.pending.push({
+      id: "p2",
+      accountId: "chk",
+      date: "2026-11-27",
+      amountCents: 2_000,
+      name: "NYL PREMIUM",
+      merchant: null,
+      pfcPrimary: "GENERAL_SERVICES",
+      pfcDetailed: "GENERAL_SERVICES_INSURANCE",
+      pending: true,
+    });
+    const pending = bill({ id: "pending", cadence: "monthly", amountCents: 2_000, nextDate: "2026-11-28" });
+    // On another account: never in checking's forecast.
+    const savings = bill({ id: "sav", accountId: "sav", nextDate: "2026-12-02" });
+    const f = forecastCash({
+      asOf: AS_OF,
+      ...h,
+      cushionCents: 0,
+      scheduled: [repeat, posted, pending, savings],
+    });
+    expect(f.upcoming.some((i) => i.scheduledId)).toBe(false);
+    // The savings bill is in the savings account's own forecast.
+    const sav = f.accounts.find((a) => a.account.id === "sav");
+    expect(sav?.items.map((i) => [i.date, i.deltaCents])).toEqual([["2026-12-02", -30_000]]);
   });
 });

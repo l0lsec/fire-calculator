@@ -30,7 +30,7 @@ describe("migrations", () => {
     const tables = await t.pg.query<{ tablename: string; rowsecurity: boolean }>(
       "select tablename, rowsecurity from pg_tables where schemaname = 'fire' order by tablename",
     );
-    expect(tables.rows.length).toBe(22);
+    expect(tables.rows.length).toBe(23);
     for (const row of tables.rows) expect(row.rowsecurity).toBe(true);
   });
 });
@@ -225,7 +225,36 @@ describe("household isolation", () => {
         expiresAt: null,
       })
     ).id;
+  const billOfA = async () =>
+    (
+      await repos.addScheduledBill(db, A.scope, {
+        accountId: A.accountId,
+        name: "A premium",
+        amountCents: 66_542,
+        cadence: "monthly",
+        nextDate: "2026-12-23",
+      })
+    ).id;
   const probes: Record<string, () => Promise<void>> = {
+    listScheduledBills: async () => {
+      await billOfA();
+      expect((await repos.listScheduledBills(db, B.scope)).every((r) => own(r, B))).toBe(true);
+    },
+    addScheduledBill: async () =>
+      expect(
+        repos.addScheduledBill(db, B.scope, {
+          accountId: A.accountId,
+          name: "B on A's account",
+          amountCents: 1,
+          cadence: "monthly",
+          nextDate: "2026-12-01",
+        }),
+      ).rejects.toBeInstanceOf(NotOwnedError),
+    deleteScheduledBill: async () => {
+      const id = await billOfA();
+      expect(await repos.deleteScheduledBill(db, B.scope, id)).toBeNull();
+      expect((await repos.listScheduledBills(db, A.scope)).some((r) => r.id === id)).toBe(true);
+    },
     listBudgets: async () =>
       expect((await repos.listBudgets(db, B.scope)).every((r) => own(r, B))).toBe(true),
     setBudget: async () => {

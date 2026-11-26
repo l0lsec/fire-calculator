@@ -460,6 +460,33 @@ export const alertState = fire.table(
   (t) => [uniqueIndex("alert_state_household_key_uq").on(t.householdId, t.key)],
 );
 
+/**
+ * Bills the user knows are coming that the bank history cannot show yet (a new
+ * insurance premium, a quarterly payment). Safe to spend counts them on their
+ * dates until the history shows the same charge.
+ */
+export const scheduledBills = fire.table(
+  "scheduled_bills",
+  {
+    id: id(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    amountCents: cents("amount_cents").notNull(),
+    /** weekly, biweekly, monthly, quarterly or yearly. */
+    cadence: text("cadence").notNull(),
+    /** The next due date as entered; later dates follow the cadence. */
+    nextDate: date("next_date", { mode: "string" }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("scheduled_bills_household_idx").on(t.householdId)],
+);
+
 /** Alert thresholds and Mac notification preferences. */
 export const alertSettings = fire.table("alert_settings", {
   householdId: uuid("household_id")
@@ -543,4 +570,5 @@ export const HOUSEHOLD_TABLES = {
   alertState,
   alertSettings,
   apiTokens,
+  scheduledBills,
 } as const;

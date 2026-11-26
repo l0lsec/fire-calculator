@@ -7,4 +7,5 @@ export * from "./repos/household";
 export * from "./repos/insights";
 export * from "./repos/plaid";
 export * from "./repos/purge";
+export * from "./repos/scheduled-bills";
 export * as schema from "./schema";
