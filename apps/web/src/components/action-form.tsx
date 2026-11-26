@@ -39,6 +39,7 @@ export function ActionForm({
   className = "",
   variant = "primary",
   successMessage,
+  renderResult,
   testId,
 }: {
   action: FormAction;
@@ -50,6 +51,8 @@ export function ActionForm({
   variant?: "primary" | "secondary" | "danger" | "ghost";
   /** Shown after a save. A message the action returns (data.message) wins. */
   successMessage?: string;
+  /** What to show under the form after a successful save, from the action's data (a one-time secret, say). */
+  renderResult?: (data: unknown) => ReactNode;
   testId?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
@@ -91,6 +94,7 @@ export function ActionForm({
           {pending ? pendingLabel : submitLabel}
         </Button>
       </div>
+      {state?.ok && renderResult ? renderResult(state.data) : null}
     </form>
   );
 }

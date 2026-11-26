@@ -3,6 +3,8 @@
 // returns 401, except the public allowlist (auth pages, Plaid webhook,
 // internal routes). Checked over HTTP against the production build, plus a
 // static check that every page, route and server action asks for a context.
+// The AI endpoints (/api/mcp, /api/v1/) skip the session check in middleware
+// but still answer 401 here: they need an AI access key instead.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { assert, pass, ROOT, vitest } from "./lib.mjs";
@@ -27,7 +29,7 @@ const walk = (dir) => {
         /^\/\(app\)\/.*page\.tsx$/.test(rel) ||
         (/^\/api\/.*route\.ts$/.test(rel) && !/^\/api\/(plaid\/webhook|internal)\//.test(rel)) ||
         /^["']use server["']/m.test(text);
-      if (needs && !/require(Api)?Context\(/.test(text)) offenders.push(rel);
+      if (needs && !/require(Api|ApiKey)?Context\(/.test(text)) offenders.push(rel);
     }
   }
 };
