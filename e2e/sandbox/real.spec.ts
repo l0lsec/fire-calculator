@@ -88,25 +88,72 @@ test("update mode through Plaid Link restores a reset Item to Connected", async 
   await plaid.sandboxResetLogin(token);
   await page.goto("/connections");
   await page.getByRole("button", { name: "Refresh now" }).click();
-  await page.reload();
-  await expect(page.getByTestId("item-status")).toHaveText("Sign-in needed");
+  // The server action revalidates the page when the sync finishes.
+  await expect(page.getByTestId("item-status")).toHaveText("Sign-in needed", { timeout: 90_000 });
 
   await page.getByRole("button", { name: "Reconnect" }).click();
-  const link = page.frameLocator("iframe[id^='plaid-link-iframe']");
-  // Sandbox update mode: continue through consent, sign in as user_good, finish.
-  for (let step = 0; step < 12; step++) {
-    if ((await page.locator("iframe[id^='plaid-link-iframe']").count()) === 0) break;
-    const user = link.locator("input[name='username'], input[id*='username']");
-    if (await user.count()) {
-      await user.first().fill("user_good");
-      await link.locator("input[type='password']").first().fill("pass_good");
+  const frameSel = "iframe[src*='plaid.com']";
+  await page.locator(frameSel).first().waitFor({ state: "attached", timeout: 30_000 });
+  const link = page.frameLocator(frameSel).first();
+
+  // 1. Plaid's optional phone screen.
+  const skipPhone = link.getByRole("button", { name: /continue without phone/i });
+  await skipPhone.waitFor({ timeout: 30_000 }).catch(() => {});
+  if (await skipPhone.count()) await skipPhone.first().click();
+
+  // 2. The Sandbox bank's login, once.
+  const loginHeading = link.getByText(/log into/i).first();
+  await loginHeading.waitFor({ timeout: 30_000 });
+  await link
+    .getByLabel(/^username$/i)
+    .first()
+    .fill("user_good");
+  await link
+    .getByLabel(/^password$/i)
+    .first()
+    .fill("pass_good");
+  await link
+    .getByRole("button", { name: /^submit$/i })
+    .first()
+    .click();
+  await loginHeading.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {});
+
+  // 3. Click through any confirmation screens until Link closes.
+  for (let step = 0; step < 75; step++) {
+    if (
+      (await page.locator(frameSel).count()) === 0 ||
+      (await page
+        .getByTestId("item-status")
+        .innerText()
+        .catch(() => "")) === "Connected"
+    )
+      break;
+    if (process.env.DEBUG_LINK) {
+      const texts = await link
+        .locator("button")
+        .allInnerTexts()
+        .catch(() => [] as string[]);
+      const body = (
+        (await link
+          .locator("body")
+          .innerText()
+          .catch(() => "")) || ""
+      )
+        .replace(/\s+/g, " ")
+        .slice(0, 160);
+      console.log(`LINK ${step}: ${JSON.stringify(texts)} ${body}`);
     }
-    const next = link.getByRole("button", { name: /continue|submit|connect|done|allow|sign in/i }).first();
+    // Never opt into Plaid's "save with Plaid" account; finish without saving.
+    const finish = link.getByRole("button", { name: /finish without saving/i });
+    const next = (await finish.count())
+      ? finish.first()
+      : link.getByRole("button", { name: /^(continue|done|allow|connect|finish)$/i }).first();
     if (await next.count()) await next.click({ timeout: 10_000 }).catch(() => {});
-    await page.waitForTimeout(1500);
-    if (await page.getByText("Reconnected.").count()) break;
+    await page.waitForTimeout(2000);
   }
-  await expect(page.getByText("Reconnected.")).toBeVisible({ timeout: 60_000 });
+  // The refreshed page drops the reconnect panel (and its message) once the Item is healthy.
+  await expect(page.getByTestId("item-status")).toHaveText("Connected", { timeout: 90_000 });
+  await expect(page.getByRole("button", { name: "Reconnect" })).toHaveCount(0);
   const { db: d, close } = db();
   try {
     expect((await getItem(d, scope, item.id))?.status).toBe("healthy");

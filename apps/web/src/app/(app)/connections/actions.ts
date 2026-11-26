@@ -5,7 +5,7 @@ import { requireContext } from "@/lib/auth/context";
 import { createSupabaseServerClient } from "@/lib/auth/supabase";
 import type { ActionResult } from "@/server/forms";
 import { plaidConfigured, plaidDeps } from "@/server/plaid/config";
-import { deleteAllData, disconnectItem } from "@/server/plaid/items";
+import { completeUpdateMode, deleteAllData, disconnectItem } from "@/server/plaid/items";
 import { syncItem } from "@/server/plaid/sync";
 
 export async function refreshItemAction(_: ActionResult | null, fd: FormData): Promise<ActionResult> {
@@ -19,7 +19,7 @@ export async function refreshItemAction(_: ActionResult | null, fd: FormData): P
 
 export async function refreshAfterUpdate(itemId: string): Promise<ActionResult> {
   const ctx = await requireContext();
-  const r = await syncItem(ctx, await plaidDeps(), itemId);
+  const r = await completeUpdateMode(ctx, await plaidDeps(), itemId);
   revalidatePath("/", "layout");
   return r.status === "ok" ? { ok: true } : { ok: false, error: r.errorCode ?? "error" };
 }

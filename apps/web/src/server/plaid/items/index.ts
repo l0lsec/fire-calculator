@@ -9,6 +9,7 @@ import {
   listAccounts,
   listItems,
   purgeHousehold,
+  updateItem,
 } from "@fire/db";
 import { PlaidApiError } from "@fire/plaid";
 import { type PlaidDeps, withAccessToken } from "../config";
@@ -85,4 +86,27 @@ export async function deleteAllData(ctx: Ctx, deps: PlaidDeps | null): Promise<n
     }
   }
   return purgeHousehold(ctx.db, ctx.scope, "user requested deletion");
+}
+
+/**
+ * After Plaid Link update mode succeeds, the user has fixed the login, but
+ * Plaid's backend can report ITEM_LOGIN_REQUIRED for a few more seconds. Mark
+ * the Item healthy, then sync, retrying briefly before accepting a login error.
+ */
+export async function completeUpdateMode(
+  ctx: Ctx,
+  deps: PlaidDeps,
+  itemId: string,
+  opts: { waitsMs?: number[]; sleep?: (ms: number) => Promise<void> } = {},
+) {
+  const { syncItem } = await import("../sync");
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  await updateItem(ctx.db, ctx.scope, itemId, { status: "healthy", errorCode: null });
+  let report = await syncItem(ctx, deps, itemId);
+  for (const ms of opts.waitsMs ?? [2000, 4000, 8000]) {
+    if (report.status !== "login_required") break;
+    await sleep(ms);
+    report = await syncItem(ctx, deps, itemId);
+  }
+  return report;
 }

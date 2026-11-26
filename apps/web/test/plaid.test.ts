@@ -376,3 +376,68 @@ describe("item health", () => {
     expect(tomb.rows[0]?.n).toBe(1);
   });
 });
+
+describe("recorded Sandbox liabilities", () => {
+  it("auto loans and lines of credit from the real Sandbox get their rates and payments", async () => {
+    const { existsSync, readFileSync } = await import("node:fs");
+    const file = new URL("../../../packages/plaid/test/recorded/liabilities_get.json", import.meta.url);
+    expect(existsSync(file), "run pnpm plaid:record").toBe(true);
+    const { LiabilitiesGetResponse } = await import("@fire/plaid");
+    const res = LiabilitiesGetResponse.parse(JSON.parse(readFileSync(file, "utf8")));
+    const { debtFieldsFrom } = await import("../src/server/plaid/mapping");
+    const fields = debtFieldsFrom(res.accounts, res.liabilities, "2026-11-25");
+    const byKind = (k: string) => [...fields.values()].filter((f) => f.kind === k);
+    const auto = byKind("auto");
+    expect(auto.length).toBeGreaterThan(0);
+    for (const f of auto) {
+      expect(f.apr).toBeGreaterThan(0);
+      expect(f.minPaymentRule).toMatchObject({ type: "fixed" });
+    }
+    const heloc = byKind("heloc");
+    expect(heloc.length).toBeGreaterThan(0);
+    for (const f of heloc) expect(f.apr).toBeGreaterThan(0);
+    // Accounts Plaid reports liability details for get a rate; the one it does not
+    // (the Sandbox "Business Credit Card") is left without one, so the app asks.
+    const covered = new Set(
+      Object.values(res.liabilities)
+        .flat()
+        .filter(Boolean)
+        .map((x) => (x as { account_id: string | null }).account_id),
+    );
+    for (const [accountId, f] of fields) {
+      if (covered.has(accountId)) expect(f.apr, f.name).toBeGreaterThan(0);
+      else expect(f.apr, f.name).toBeUndefined();
+    }
+    expect([...fields.values()].some((f) => f.apr === undefined)).toBe(true);
+    // Account numbers are never parsed.
+    expect(JSON.stringify(res)).not.toContain("account_number");
+  });
+});
+
+describe("update mode completion", () => {
+  it("a login error that lingers briefly after update mode is retried before it is accepted", async () => {
+    const { ctx, item } = await linked();
+    fake.setItemError(item.plaidItemId, "ITEM_LOGIN_REQUIRED");
+    await syncItem(ctx, deps, item.id);
+    expect((await getItem(ctx.db, ctx.scope, item.id))?.status).toBe("login_required");
+    const { completeUpdateMode } = await import("../src/server/plaid/items");
+    // Plaid clears the error only after the first retry wait.
+    let waits = 0;
+    const report = await completeUpdateMode(ctx, deps, item.id, {
+      waitsMs: [1, 1, 1],
+      sleep: async () => {
+        waits++;
+        fake.setItemError(item.plaidItemId, null);
+      },
+    });
+    expect(waits).toBe(1);
+    expect(report.status).toBe("ok");
+    expect((await getItem(ctx.db, ctx.scope, item.id))?.status).toBe("healthy");
+
+    // A login that is really still broken is reported, not hidden.
+    fake.setItemError(item.plaidItemId, "ITEM_LOGIN_REQUIRED");
+    const stuck = await completeUpdateMode(ctx, deps, item.id, { waitsMs: [1, 1], sleep: async () => {} });
+    expect(stuck.status).toBe("login_required");
+    expect((await getItem(ctx.db, ctx.scope, item.id))?.status).toBe("login_required");
+  });
+});

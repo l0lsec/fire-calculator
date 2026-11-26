@@ -118,6 +118,24 @@ export const StudentLiability = z.object({
   outstanding_interest_amount: nnum.optional(),
   next_payment_due_date: isoDate.nullable().optional(),
 });
+/** Other installment loans (auto, personal...). The account number is deliberately not parsed. */
+export const LoanLiability = z.object({
+  account_id: str,
+  interest_rate: z.object({ percentage: nnum, type: nstr }).nullable().optional(),
+  next_payment_amount: nnum.optional(),
+  maturity_date: isoDate.nullable().optional(),
+  principal_balance: nnum.optional(),
+});
+/** Lines of credit (HELOCs and similar). */
+export const LineOfCreditLiability = z.object({
+  account_id: str,
+  interest_rate: z.object({ percentage: nnum, type: nstr }).nullable().optional(),
+  aprs: z
+    .array(z.object({ apr_percentage: z.number(), apr_type: str }))
+    .nullable()
+    .optional(),
+  minimum_payment_amount: nnum.optional(),
+});
 export const LiabilitiesGetResponse = z.object({
   accounts: z.array(Account),
   item: Item,
@@ -125,6 +143,8 @@ export const LiabilitiesGetResponse = z.object({
     credit: z.array(CreditLiability).nullable(),
     mortgage: z.array(MortgageLiability).nullable(),
     student: z.array(StudentLiability).nullable(),
+    loan: z.array(LoanLiability).nullable().optional(),
+    line_of_credit: z.array(LineOfCreditLiability).nullable().optional(),
   }),
   request_id: str,
 });

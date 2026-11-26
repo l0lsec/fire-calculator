@@ -163,6 +163,25 @@ export function debtFieldsFrom(
     if (s.minimum_payment_amount !== null)
       f.minPaymentRule = { type: "fixed", amount: s.minimum_payment_amount };
   }
+  for (const l of liabilities.loan ?? []) {
+    const f = out.get(l.account_id);
+    if (!f) continue;
+    if (l.interest_rate?.percentage !== null && l.interest_rate?.percentage !== undefined)
+      f.apr = l.interest_rate.percentage / 100;
+    if (l.next_payment_amount !== null && l.next_payment_amount !== undefined) {
+      f.minPaymentRule = { type: "fixed", amount: l.next_payment_amount };
+    }
+    if (l.maturity_date) f.maturityDate = l.maturity_date;
+  }
+  for (const c of liabilities.line_of_credit ?? []) {
+    const f = out.get(c.account_id);
+    if (!f) continue;
+    const pctRate = c.interest_rate?.percentage ?? c.aprs?.[0]?.apr_percentage ?? null;
+    if (pctRate !== null) f.apr = pctRate / 100;
+    if (c.minimum_payment_amount !== null && c.minimum_payment_amount !== undefined) {
+      f.minPaymentRule = { type: "fixed", amount: c.minimum_payment_amount };
+    }
+  }
   for (const m of liabilities.mortgage ?? []) {
     const f = out.get(m.account_id);
     if (!f) continue;

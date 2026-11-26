@@ -72,7 +72,11 @@ export function PlaidLinkButton({
         onSuccess: async (publicToken, metadata) => {
           try {
             if (itemId) {
-              await onUpdated?.();
+              const r = (await onUpdated?.()) as { ok?: boolean; error?: string } | undefined;
+              if (r && r.ok === false)
+                throw new Error(
+                  `The bank still reports a problem (${r.error ?? "error"}). Try again in a minute.`,
+                );
               setMsg({ tone: "good", text: "Reconnected." });
             } else {
               const ex = await fetch("/api/plaid/link/exchange", {
