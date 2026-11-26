@@ -6,6 +6,9 @@
 // pairing code "fp1.<pid>.<base64url key>".
 import CryptoKit
 import Foundation
+#if os(iOS)
+import FinanceKit
+#endif
 
 enum SyncFormat {
     static let version = 1
@@ -140,6 +143,21 @@ enum SyncError: LocalizedError {
         }
     }
 }
+
+#if os(iOS)
+enum FinanceAccess {
+    /// FinanceKit traps (it does not throw) when the process lacks the entitlement,
+    /// and the Simulator has no Wallet data and cannot carry the entitlement.
+    static var available: Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        return FinanceStore.isDataAvailable(.financialData)
+        #endif
+    }
+}
+
+#endif
 
 enum Formats {
     /// Locale-independent decimal string, at most 4 fractional digits.

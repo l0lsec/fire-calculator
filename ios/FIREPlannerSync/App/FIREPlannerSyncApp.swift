@@ -54,6 +54,13 @@ final class SyncModel {
 
     func refreshStatus() async {
         pairing = PairingStore.load()
+        // FinanceKit traps (not throws) when asked for status where Wallet data is
+        // unavailable (Simulator, iPad, unsupported region): check first.
+        guard FinanceAccess.available else {
+            authorization = nil
+            last = SyncEngine.lastResult
+            return
+        }
         authorization = try? await FinanceStore.shared.authorizationStatus()
         last = SyncEngine.lastResult
     }
@@ -79,7 +86,7 @@ final class SyncModel {
     }
 
     func allowWalletAccess() async {
-        guard FinanceStore.isDataAvailable(.financialData) else {
+        guard FinanceAccess.available else {
             message = SyncError.unavailable.localizedDescription
             return
         }

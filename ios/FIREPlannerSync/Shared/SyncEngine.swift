@@ -47,7 +47,7 @@ enum SyncEngine {
     }
 
     static func buildSnapshot(deviceName: String?) async throws -> (SnapshotDTO, (Int, Int)) {
-        guard FinanceStore.isDataAvailable(.financialData) else { throw SyncError.unavailable }
+        guard FinanceAccess.available else { throw SyncError.unavailable }
         let store = FinanceStore.shared
         guard try await store.authorizationStatus() == .authorized else { throw SyncError.notAuthorized }
 
