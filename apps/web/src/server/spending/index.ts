@@ -2,6 +2,7 @@
 // review queue, one-time decisions, category rules, and "use as baseline".
 import {
   type Db,
+  getAccount,
   getTransaction,
   type HouseholdScope,
   listAccounts,
@@ -9,6 +10,7 @@ import {
   setCategoryRule,
   setOverride,
   setSpendingProfile,
+  updateAccount,
 } from "@fire/db";
 import { z } from "zod";
 import type { ActionResult } from "../forms";
@@ -43,7 +45,26 @@ export async function spendingView(ctx: Ctx, asOf: string) {
     listItems(ctx.db, ctx.scope),
     listAccounts(ctx.db, ctx.scope),
   ]);
-  return { s, connected: items.length > 0 || hasConnectedAccounts({ accounts }) };
+  const living = new Map(s.byAccount.map((a) => [a.accountId, a.livingCents]));
+  const byAccount = accounts
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      mask: a.mask,
+      business: a.business,
+      livingCents: living.get(a.id) ?? 0,
+    }))
+    .filter((a) => a.livingCents !== 0 || a.business)
+    .sort((a, b) => b.livingCents - a.livingCents);
+  return { s, byAccount, connected: items.length > 0 || hasConnectedAccounts({ accounts }) };
+}
+
+/** Mark an account as business (its spending is shown apart, still inside the totals) or personal. */
+export async function setAccountBusiness(ctx: Ctx, id: string, business: boolean): Promise<ActionResult> {
+  const account = await getAccount(ctx.db, ctx.scope, id);
+  if (!account) return { ok: false, error: "Account not found" };
+  await updateAccount(ctx.db, ctx.scope, id, { business });
+  return { ok: true };
 }
 
 const Decision = z.discriminatedUnion("decision", [

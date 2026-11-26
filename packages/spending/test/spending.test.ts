@@ -228,3 +228,129 @@ describe("mechanics", () => {
     expect(spendingWindow("2024-03-01").end).toBe("2024-02-29");
   });
 });
+
+describe("payments to your own cards", () => {
+  const checking = { id: "chk", type: "depository", subtype: "checking", name: "Checking" };
+  const quicksilver = {
+    id: "qs",
+    type: "credit",
+    subtype: "credit card",
+    name: "QuicksilverOne",
+    institution: "Capital One",
+    mask: "6288",
+  };
+  const discover = {
+    id: "disc",
+    type: "credit",
+    subtype: "credit card",
+    name: "Discover it Chrome",
+    institution: "Capital One",
+    mask: "7341",
+  };
+  let n = 0;
+  const pay = (name: string, cents: number, date = "2026-03-10"): SpendingTx => ({
+    id: `p${++n}`,
+    accountId: "chk",
+    date,
+    amountCents: cents,
+    name,
+    merchant: null,
+    pfcPrimary: "LOAN_PAYMENTS",
+    pfcDetailed: "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+    pending: false,
+  });
+  const run = (txs: SpendingTx[], accounts = [checking, quicksilver, discover]) =>
+    deriveSpending({ asOf: "2026-11-26", accounts, transactions: txs });
+  const classOf = (s: ReturnType<typeof run>, name: string) =>
+    s.classified.filter((c) => c.tx.name === name).map((c) => c.class);
+
+  it("a payment to a linked card is a transfer even when the card's side is missing", () => {
+    // The card's history starts later, so its side of these payments never arrives.
+    const s = run([
+      pay("CAPITAL ONE DES:MOBILE PMT ID:CA064C0FA1BA03", 185_655, "2025-11-19"),
+      pay("Online Banking payment to CRD 6288 Confirmation# 1", 5_000),
+    ]);
+    expect(s.livingCents).toBe(0);
+    expect(s.reviewQueue).toHaveLength(0);
+    for (const c of s.classified) {
+      expect(c.class).toBe("transfer");
+      expect(c.reason).toContain("QuicksilverOne ...6288");
+    }
+  });
+
+  it("a payment to a card that is not linked still counts as spending, flagged", () => {
+    const s = run([pay("APPLECARD GSBANK DES:PAYMENT", 20_000)]);
+    // March to October is 8 months of data, annualized.
+    expect(s.monthsOfData).toBe(8);
+    expect(s.livingCents).toBe(20_000 * 1.5);
+    expect(s.reviewQueue.map((r) => r.flag)).toEqual(["unlinked-card-payment"]);
+    // Once the Apple Card is linked (for example from the iPhone), the same payment is a transfer.
+    const linked = run(
+      [pay("APPLECARD GSBANK DES:PAYMENT", 20_000)],
+      [checking, { id: "ac", type: "credit", subtype: "credit card", name: "Apple Card", mask: null }],
+    );
+    expect(linked.livingCents).toBe(0);
+  });
+
+  it("with a second, unlinked card from the same issuer, the card's digits or amount decide", () => {
+    const txs: SpendingTx[] = [];
+    for (const m of ["01", "02", "03", "04", "05", "06"]) {
+      txs.push(pay("DISCOVER DES:E-PAYMENT ID:7341", 24_500, `2026-${m}-16`));
+      txs.push(pay("DISCOVER DES:E-PAYMENT ID:4077", 16_500, `2026-${m}-04`));
+    }
+    txs.push(pay("DISCOVER CAP ONE DES:CRCARDPMT ID:CA030443B4", 23_400, "2026-08-17"));
+    txs.push(pay("DISCOVER CAP ONE DES:CRCARDPMT ID:CA0412388B", 15_900, "2026-08-03"));
+    txs.push(pay("DISCOVER CAP ONE DES:CRCARDPMT ID:CA0000000001", 90_000, "2026-09-03"));
+    const s = run(txs);
+    expect(new Set(classOf(s, "DISCOVER DES:E-PAYMENT ID:7341"))).toEqual(new Set(["transfer"]));
+    expect(new Set(classOf(s, "DISCOVER DES:E-PAYMENT ID:4077"))).toEqual(new Set(["living_expense"]));
+    // No digits: closest in amount to the linked card's payments, to the unlinked card's, or to neither.
+    expect(classOf(s, "DISCOVER CAP ONE DES:CRCARDPMT ID:CA030443B4")).toEqual(["transfer"]);
+    expect(classOf(s, "DISCOVER CAP ONE DES:CRCARDPMT ID:CA0412388B")).toEqual(["living_expense"]);
+    expect(classOf(s, "DISCOVER CAP ONE DES:CRCARDPMT ID:CA0000000001")).toEqual(["living_expense"]);
+    // January to October is 10 months of data, annualized.
+    expect(s.livingCents).toBe(Math.round((6 * 16_500 + 15_900 + 90_000) * 1.2));
+  });
+});
+
+describe("business accounts", () => {
+  it("business spending and income stay in the totals and are reported apart", () => {
+    let n = 0;
+    const tx = (accountId: string, cents: number, primary: string, detailed: string): SpendingTx => ({
+      id: `t${++n}`,
+      accountId,
+      date: "2026-02-10",
+      amountCents: cents,
+      name: detailed,
+      merchant: null,
+      pfcPrimary: primary,
+      pfcDetailed: detailed,
+      pending: false,
+    });
+    const s = deriveSpending({
+      asOf: "2026-11-26",
+      accounts: [
+        { id: "home", type: "depository", subtype: "checking" },
+        { id: "biz", type: "depository", subtype: "checking", business: true },
+      ],
+      transactions: [
+        tx("home", 10_000, "FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES"),
+        tx("biz", 40_000, "GENERAL_SERVICES", "GENERAL_SERVICES_CONSULTING_AND_LEGAL"),
+        tx("biz", -300_000, "INCOME", "INCOME_OTHER_INCOME"),
+        // Moving money from the business to personal checking is neither.
+        tx("biz", 50_000, "TRANSFER_OUT", "TRANSFER_OUT_ACCOUNT_TRANSFER"),
+        tx("home", -50_000, "TRANSFER_IN", "TRANSFER_IN_ACCOUNT_TRANSFER"),
+      ],
+    });
+    // February to October is 9 months of data, annualized by 12/9.
+    const year = (cents: number) => Math.round((cents * 12) / 9);
+    expect(s.livingCents).toBe(year(50_000));
+    expect(s.businessCents).toBe(year(40_000));
+    expect(s.incomeCents).toBe(year(300_000));
+    expect(s.businessIncomeCents).toBe(year(300_000));
+    expect(s.byAccount).toEqual([
+      { accountId: "biz", livingCents: year(40_000) },
+      { accountId: "home", livingCents: year(10_000) },
+    ]);
+  });
+});

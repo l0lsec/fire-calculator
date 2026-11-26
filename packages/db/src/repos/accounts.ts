@@ -49,7 +49,14 @@ export async function updateAccount(
   id: string,
   patch: Pick<
     Patch<typeof accounts>,
-    "name" | "bucket" | "includeInFi" | "currentCents" | "costBasisCents" | "rothBasisCents" | "archived"
+    | "name"
+    | "bucket"
+    | "includeInFi"
+    | "business"
+    | "currentCents"
+    | "costBasisCents"
+    | "rothBasisCents"
+    | "archived"
   >,
 ) {
   if (!isUuid(id)) return null;

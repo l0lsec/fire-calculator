@@ -10,6 +10,7 @@ import {
   listContributionStreams,
   listDebts,
   listIncomeStreams,
+  listItems,
   listOverrides,
   listPeople,
   listTransactions,
@@ -74,16 +75,26 @@ export { todayISO } from "../today";
 
 export async function deriveHouseholdSpending(ctx: Ctx, asOf: string, debts?: HouseholdData["debts"]) {
   const win = spendingWindow(asOf);
-  const [accounts, transactions, overrides, rules, debtRows] = await Promise.all([
+  const [accounts, transactions, overrides, rules, debtRows, items] = await Promise.all([
     listAccounts(ctx.db, ctx.scope, { includeArchived: true }),
     listTransactions(ctx.db, ctx.scope, win.start, win.end),
     listOverrides(ctx.db, ctx.scope),
     listCategoryRules(ctx.db, ctx.scope),
     debts ? Promise.resolve(debts) : listDebts(ctx.db, ctx.scope),
+    listItems(ctx.db, ctx.scope),
   ]);
+  const institution = new Map(items.map((i) => [i.id, i.institutionName]));
   return deriveSpending({
     asOf,
-    accounts: accounts.map((a) => ({ id: a.id, type: a.type, subtype: a.subtype })),
+    accounts: accounts.map((a) => ({
+      id: a.id,
+      type: a.type,
+      subtype: a.subtype,
+      name: a.name,
+      mask: a.mask,
+      institution: a.itemId ? (institution.get(a.itemId) ?? null) : null,
+      business: a.business,
+    })),
     transactions: transactions.map((t) => ({
       id: t.id,
       accountId: t.accountId,

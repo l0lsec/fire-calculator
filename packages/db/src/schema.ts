@@ -146,6 +146,8 @@ export const accounts = fire.table(
     bucket: bucketEnum("bucket").notNull(),
     bucketOverridden: boolean("bucket_overridden").notNull().default(false),
     includeInFi: boolean("include_in_fi").notNull().default(true),
+    /** A business account: its spending stays in household totals and is also shown apart. */
+    business: boolean("business").notNull().default(false),
     currentCents: cents("current_cents").notNull().default(0),
     availableCents: cents("available_cents"),
     costBasisCents: cents("cost_basis_cents"),

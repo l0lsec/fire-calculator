@@ -28,6 +28,34 @@ test("review spending: marking a large purchase one-time lowers the annual total
     .toBe(before - 4200);
 });
 
+test("business accounts: spending stays in the total and is shown apart", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const user = await createVerifiedUser();
+  await signInContext(context, user, baseURL as string);
+  await page.goto("/dashboard");
+  await page.request.post("/api/plaid/link/exchange", {
+    data: { public_token: await fakePlaid.publicToken(), institution: null },
+  });
+  await page.goto("/spending");
+  const total = await page.getByTestId("spending-total").textContent();
+  await expect(page.getByTestId("spending-business")).toHaveCount(0);
+  const first = page.getByTestId("spending-accounts").locator("li").first();
+  await first.getByRole("button", { name: "Mark as business" }).click();
+  await expect(page.getByTestId("spending-business")).toContainText("business $");
+  await expect(page.getByTestId("spending-total")).toHaveText(total ?? "");
+  await page.reload();
+  await expect(page.getByTestId("spending-business")).toBeVisible();
+  await page
+    .getByTestId("spending-accounts")
+    .locator("li", { hasText: "business" })
+    .getByRole("button", { name: "Mark as personal" })
+    .click();
+  await expect(page.getByTestId("spending-business")).toHaveCount(0);
+});
+
 test("change debt strategy: the planner's choice is saved to the plan", async ({
   page,
   context,

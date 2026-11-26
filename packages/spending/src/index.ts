@@ -3,7 +3,9 @@
 // rules below exist to stop the common double counts:
 //   - an internal transfer (both legs on linked accounts) is never spending;
 //   - a payment to a LINKED card is a transfer (its purchases are counted line
-//     by line); a payment to an UNLINKED card is counted, and flagged;
+//     by line), even when the card's side of the payment is not in the data
+//     (it posted late, or predates the card's history); a payment to an
+//     UNLINKED card is counted, and flagged;
 //   - loan payments are debt service, modeled by the debt engine;
 //   - mortgage escrow is reported from the mortgage record, not the payment;
 //   - investment contributions are saving, not spending;
@@ -24,6 +26,12 @@ export interface SpendingAccount {
   /** Plaid account type: depository, credit, loan, investment, other. */
   type: string;
   subtype: string | null;
+  /** Account and institution names and last four digits: used to tell which card a payment went to. */
+  name?: string | null;
+  institution?: string | null;
+  mask?: string | null;
+  /** A business account: its spending and income stay in the totals and are also reported apart. */
+  business?: boolean;
 }
 
 export interface SpendingTx {
@@ -108,6 +116,12 @@ export interface AnnualSpending {
   incomeCents: number;
   investmentContributionCents: number;
   debtPaymentCents: number;
+  /** The part of livingCents spent from business accounts (annualized; already inside livingCents). */
+  businessCents: number;
+  /** The part of incomeCents received into business accounts. */
+  businessIncomeCents: number;
+  /** Living spending per account, annualized. */
+  byAccount: { accountId: string; livingCents: number }[];
   byCategory: CategoryTotal[];
   monthly: { month: string; livingCents: number }[];
   reviewQueue: { transactionId: string; flag: Flag; amountCents: number; name: string; date: string }[];
@@ -213,6 +227,102 @@ export function matchTransfers(txs: SpendingTx[], linkedAccountIds: Set<string>)
   return pairOf;
 }
 
+// ---------- which card a payment went to ----------
+
+/** Card issuers as they appear in payment descriptions and account names. Order matters: "DISCOVER CAP ONE" is Discover. */
+const ISSUERS: [string, RegExp][] = [
+  ["discover", /\bDISCOVER\b/i],
+  ["apple", /\bAPPLE ?CARD\b|\bGS ?BANK\b|\bGOLDMAN SACHS\b/i],
+  ["amex", /\bAMERICAN ?EXPRESS\b|\bAMEX\b/i],
+  ["capital-one", /\bCAPITAL ?ONE\b|\bCAP ONE\b|\bQUICKSILVER/i],
+  ["bank-of-america", /\bBANK OF AMERICA\b|\bBK OF AMER|\bBOFA\b/i],
+  ["navy-federal", /\bNAVY FED|\bNAVY FCU\b|\bNFCU\b/i],
+  ["chase", /\bCHASE\b/i],
+  ["citi", /\bCITI(BANK|CARDS?)?\b/i],
+  ["wells-fargo", /\bWELLS FARGO\b/i],
+  ["us-bank", /\bU\.? ?S\.? BANK\b/i],
+  ["barclays", /\bBARCLAY/i],
+  ["synchrony", /\bSYNCHRONY\b|\bSYNCB\b/i],
+  ["sofi", /\bSOFI\b/i],
+  ["mission-lane", /\bMISSION LANE\b/i],
+  ["concora", /\bCONCORA\b/i],
+];
+
+export function issuerOf(text: string | null | undefined): string | null {
+  if (!text) return null;
+  for (const [key, re] of ISSUERS) if (re.test(text)) return key;
+  return null;
+}
+
+/** Standalone four-digit numbers in a description ("CRD 0383", "ID:7341"). */
+function fourDigitTokens(text: string): string[] {
+  return text.match(/(?<!\d)\d{4}(?!\d)/g) ?? [];
+}
+
+const isCardPayment = (t: SpendingTx) => t.pfcDetailed === "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT";
+
+/**
+ * Finds the linked card an unmatched card payment was sent to, so the payment
+ * is a transfer even when the card's own side of it is missing. A description
+ * that names a linked card's last four digits settles it. Otherwise the issuer
+ * decides, unless the household also pays another card from that issuer that
+ * is not linked (its last four digits recur in that issuer's payments). Then a
+ * payment without digits goes to whichever card's named payments it is closest
+ * to in amount (within 25%); if that is the unlinked card, or nothing is that
+ * close, it stays counted (and flagged) because it may be either.
+ */
+export function cardPaymentTargets(
+  txs: SpendingTx[],
+  accounts: SpendingAccount[],
+): (t: SpendingTx) => SpendingAccount | null {
+  const cards = accounts
+    .filter((a) => a.type === "credit")
+    .map((a) => ({ a, issuer: issuerOf(a.name) ?? issuerOf(a.institution) }));
+  const byMask = new Map(cards.filter((c) => c.a.mask).map((c) => [c.a.mask as string, c.a]));
+  const byIssuer = new Map<string, SpendingAccount[]>();
+  for (const c of cards) if (c.issuer) byIssuer.set(c.issuer, [...(byIssuer.get(c.issuer) ?? []), c.a]);
+
+  // Last-four digits that recur in an issuer's payments but belong to no linked card.
+  const seen = new Map<string, number>();
+  // Payments that name a card, by issuer: what each card's payments usually look like.
+  const named = new Map<string, { cents: number; card: SpendingAccount | null }[]>();
+  for (const t of txs) {
+    if (!isCardPayment(t) || t.amountCents <= 0) continue;
+    const issuer = issuerOf(t.name);
+    if (!issuer) continue;
+    for (const tok of new Set(fourDigitTokens(t.name))) {
+      const card = byMask.get(tok) ?? null;
+      if (!card) seen.set(`${issuer}:${tok}`, (seen.get(`${issuer}:${tok}`) ?? 0) + 1);
+      named.set(issuer, [...(named.get(issuer) ?? []), { cents: t.amountCents, card }]);
+    }
+  }
+  const unlinkedCard = new Set([...seen].filter(([, n]) => n >= 2).map(([k]) => k.split(":")[0] as string));
+
+  return (t) => {
+    if (!isCardPayment(t) || t.amountCents <= 0) return null;
+    const tokens = fourDigitTokens(t.name);
+    for (const tok of tokens) {
+      const card = byMask.get(tok);
+      if (card) return card;
+    }
+    const issuer = issuerOf(t.name);
+    if (!issuer) return null;
+    const linked = byIssuer.get(issuer);
+    if (!linked?.length) return null;
+    if (!unlinkedCard.has(issuer)) return linked[0] as SpendingAccount;
+    let best: { cents: number; card: SpendingAccount | null } | null = null;
+    let bestGap = Number.POSITIVE_INFINITY;
+    for (const n of named.get(issuer) ?? []) {
+      const gap = Math.abs(Math.log(t.amountCents / n.cents));
+      if (gap < bestGap) {
+        best = n;
+        bestGap = gap;
+      }
+    }
+    return best && bestGap <= Math.log(1.25) ? best.card : null;
+  };
+}
+
 // ---------- classification ----------
 
 function defaultClass(
@@ -277,6 +387,7 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
 
   const inWindow = input.transactions.filter((t) => !t.pending && t.date >= win.start && t.date <= win.end);
   const pairs = matchTransfers(inWindow, linked);
+  const cardFor = cardPaymentTargets(inWindow, input.accounts);
 
   const classified: Classified[] = inWindow.map((t) => {
     const account = accounts.get(t.accountId);
@@ -293,6 +404,14 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
           flags: [] as Flag[],
         }
       : defaultClass(t, account);
+    if (flags.includes("unlinked-card-payment")) {
+      const card = cardFor(t);
+      if (card) {
+        cls = "transfer";
+        reason = `payment to your linked card${card.name ? ` ${card.name}` : ""}${card.mask ? ` ...${card.mask}` : ""}`;
+        flags = [];
+      }
+    }
     let essential = defaultEssential(t.pfcPrimary, t.pfcDetailed);
 
     // Household rule: may reclassify ordinary spending categories, never the
@@ -360,14 +479,23 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
   let income = 0;
   let invest = 0;
   let debt = 0;
+  let businessLiving = 0;
+  let businessIncome = 0;
+  const perAccount = new Map<string, number>();
   const cats = new Map<string, CategoryTotal>();
   const monthly = new Map(win.months.map((m) => [m, 0]));
   for (const c of classified) {
-    if (c.class === "income") income += -c.tx.amountCents;
+    const business = accounts.get(c.tx.accountId)?.business === true;
+    if (c.class === "income") {
+      income += -c.tx.amountCents;
+      if (business) businessIncome += -c.tx.amountCents;
+    }
     if (c.class === "investment_contribution") invest += c.tx.amountCents;
     if (c.class === "debt_payment") debt += c.tx.amountCents;
     if (c.class !== "living_expense" && c.class !== "refund") continue;
     living += c.countedCents;
+    if (business) businessLiving += c.countedCents;
+    perAccount.set(c.tx.accountId, (perAccount.get(c.tx.accountId) ?? 0) + c.countedCents);
     if (c.essential) essentialLiving += c.countedCents;
     monthly.set(monthOf(c.tx.date), (monthly.get(monthOf(c.tx.date)) ?? 0) + c.countedCents);
     const ct = cats.get(c.category) ?? {
@@ -398,6 +526,11 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
     incomeCents: Math.round(income * scale),
     investmentContributionCents: Math.round(invest * scale),
     debtPaymentCents: Math.round(debt * scale),
+    businessCents: Math.round(businessLiving * scale),
+    businessIncomeCents: Math.round(businessIncome * scale),
+    byAccount: [...perAccount]
+      .map(([accountId, cents]) => ({ accountId, livingCents: Math.round(cents * scale) }))
+      .sort((a, b) => b.livingCents - a.livingCents),
     byCategory: [...cats.values()]
       .map((c) => ({ ...c, totalCents: Math.round(c.totalCents * scale) }))
       .sort((a, b) => b.totalCents - a.totalCents),

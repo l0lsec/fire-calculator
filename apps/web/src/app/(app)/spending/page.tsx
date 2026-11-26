@@ -6,13 +6,13 @@ import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
 import { effectiveSpendingSource, todayISO } from "@/server/snapshot";
 import { categoryLabel, FLAG_TEXT, spendingView } from "@/server/spending";
-import { categoryEssentialAction, decideAction, useMeasuredAction } from "./actions";
+import { accountBusinessAction, categoryEssentialAction, decideAction, useMeasuredAction } from "./actions";
 
 export const metadata = { title: "Spending | FIRE Planner" };
 
 export default async function SpendingPage() {
   const ctx = await requireContext();
-  const [{ s, connected }, profile] = await Promise.all([
+  const [{ s, byAccount, connected }, profile] = await Promise.all([
     spendingView(ctx, todayISO()),
     getSpendingProfile(ctx.db, ctx.scope),
   ]);
@@ -48,8 +48,8 @@ export default async function SpendingPage() {
       <div>
         <h1 className="text-2xl font-semibold">Spending</h1>
         <p className="text-sm text-ink-3">
-          {s.windowStart} to {s.windowEnd}. Transfers between your accounts, card payments, loan payments and
-          investing are left out; mortgage escrow is included.
+          {s.windowStart} to {s.windowEnd}. Money moved between your own accounts, payments to cards you have
+          connected, loan payments and investing are left out; mortgage escrow is included.
         </p>
       </div>
       {s.warnings.map((w) => (
@@ -65,6 +65,11 @@ export default async function SpendingPage() {
             {usdCents(s.totalCents)}
           </p>
           <p className="num text-xs text-ink-3">includes escrow {usdCents(s.escrowCents)}</p>
+          {s.businessCents !== 0 ? (
+            <p className="num text-xs text-ink-3" data-testid="spending-business">
+              business {usdCents(s.businessCents)} · personal {usdCents(s.totalCents - s.businessCents)}
+            </p>
+          ) : null}
         </Card>
         <Card>
           <p className="text-xs text-ink-3">Essentials</p>
@@ -181,6 +186,33 @@ export default async function SpendingPage() {
                     </>
                   )}
                 </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      {byAccount.length ? (
+        <Card title="By account">
+          <p className="mb-2 text-sm text-ink-3">
+            Mark the accounts your business pays from. Their spending stays in your totals and is shown on its
+            own line, so you can see what is business and what is personal.
+          </p>
+          <ul className="divide-y divide-line" data-testid="spending-accounts">
+            {byAccount.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <span className="min-w-0">
+                  {a.name} {a.mask ? <span className="text-ink-3">...{a.mask}</span> : null}{" "}
+                  {a.business ? <span className="text-xs text-accent">business</span> : null}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="num">{usdCents(a.livingCents)}/yr</span>
+                  <ButtonForm
+                    action={accountBusinessAction}
+                    label={a.business ? "Mark as personal" : "Mark as business"}
+                    hidden={{ id: a.id, business: a.business ? "false" : "true" }}
+                  />
+                </span>
               </li>
             ))}
           </ul>
