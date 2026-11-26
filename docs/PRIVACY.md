@@ -1,6 +1,6 @@
-# Privacy policy (draft)
+# Privacy policy (template)
 
-_Draft for review before publication. Replace the bracketed items._
+_Only needed if you host this app for other people. For personal local use, your data never leaves your machine except to Plaid. Replace the bracketed items before publishing._
 
 FIRE Planner ("the app") helps you plan for financial independence. This policy explains what the
 app collects, why, and your choices. It was last updated on [date].

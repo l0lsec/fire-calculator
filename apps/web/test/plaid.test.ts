@@ -441,3 +441,21 @@ describe("update mode completion", () => {
     expect((await getItem(ctx.db, ctx.scope, item.id))?.status).toBe("login_required");
   });
 });
+
+describe("stale refresh", () => {
+  it("only connections idle past the window are refreshed, once per burst", async () => {
+    const { ctx, item } = await linked();
+    const { staleItems, STALE_AFTER_HOURS } = await import("../src/server/plaid/stale");
+    const now = Date.now();
+    expect(await staleItems(ctx, now)).toHaveLength(0);
+    const later = now + (STALE_AFTER_HOURS + 1) * 3600 * 1000;
+    expect((await staleItems(ctx, later)).map((i) => i.id)).toEqual([item.id]);
+    // Claiming (as syncStaleItems does first) makes it fresh for the next request.
+    const { updateItem } = await import("@fire/db");
+    await updateItem(ctx.db, ctx.scope, item.id, { lastSyncedAt: new Date(later) });
+    expect(await staleItems(ctx, later)).toHaveLength(0);
+    // Unhealthy connections are not auto-refreshed (they need the user).
+    await updateItem(ctx.db, ctx.scope, item.id, { status: "login_required" });
+    expect(await staleItems(ctx, later + 48 * 3600 * 1000)).toHaveLength(0);
+  });
+});

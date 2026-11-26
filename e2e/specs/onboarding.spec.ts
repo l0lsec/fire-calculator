@@ -10,6 +10,8 @@ test("a manual-only household goes from sign-up to a dashboard with dates", asyn
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/sign-in/);
   await page.getByRole("link", { name: "Create an account" }).click();
+  // Wait for the sign-up form: the sign-in form has Email and Password fields too.
+  await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Create account" }).click();

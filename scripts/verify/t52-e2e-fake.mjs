@@ -3,8 +3,10 @@ import { cleanDatabase } from "./clean-db.mjs";
 import { playwright } from "./e2e.mjs";
 // T5.2 G2: on a clean database, every e2e flow passes against the fake Plaid API:
 // onboarding (manual and with a bank), spending review, debt strategy, re-auth, disconnect, delete.
-import { pass } from "./lib.mjs";
+import { assert, pass, run } from "./lib.mjs";
 
+const self = run("node", ["scripts/verify/clean-db.selftest.mjs"]);
+assert(self.out.includes("CLEAN_SELFTEST_OK"), "cleanup self-test failed");
 cleanDatabase();
 playwright(
   ["e2e/specs"],

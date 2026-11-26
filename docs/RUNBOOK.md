@@ -17,7 +17,23 @@ How to run FIRE Planner locally, deploy it, and operate it. Security background 
 Checks: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm guards`, `pnpm e2e` (needs the local
 stack; uses a fake Plaid API), and the gate ledgers under `.unlazy/fire-v1/gates/`.
 
-## Production setup (first time)
+## Personal local use with real banks
+
+1. In the Plaid dashboard, request the **Trial plan** (US and Canada teams created after
+   2026-04-15: up to 10 live Items, auto-approved for most developers). Plaid may ask you to
+   complete its profile steps; that is between you and Plaid.
+2. Put the production secret in `.env` as `PLAID_SECRET` and set `PLAID_ENV=production`.
+   Keep `PLAID_WEBHOOK_URL` empty: without a public URL, Plaid cannot deliver webhooks.
+3. Restart `pnpm dev`, connect your banks on Connections, review Spending, and spot-check
+   three balances against your bank.
+4. Freshness without webhooks: the app re-syncs connections older than 12 hours when opened;
+   `pnpm sync` syncs everything now (schedule it with launchd if you like).
+5. Some large banks use OAuth in Link; if one fails to connect, check the Plaid dashboard's
+   OAuth institution registration for your team.
+6. `pnpm backup` regularly; restore with
+   `docker exec -i supabase_db_fire-calculator psql -U postgres < backups/<file>.sql`.
+
+## Production setup (only if you ever host it publicly)
 
 1. **Supabase**: create a project. In Authentication, enable TOTP MFA, set the site URL to the
    app URL, and keep sign-up confirmations on. Note the project URL, anon key, and the Postgres

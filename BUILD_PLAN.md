@@ -47,7 +47,7 @@ Rules for every ticket:
 
 ## 2. Stack
 
-Chosen to match what you already run (another project, another project): Next.js on Cloudflare via OpenNext, pnpm workspaces, Drizzle, vitest, fast-check, zod.
+Chosen for a small, single-developer stack: Next.js on Cloudflare via OpenNext, pnpm workspaces, Drizzle, vitest, fast-check, zod.
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -60,9 +60,9 @@ Chosen to match what you already run (another project, another project): Next.js
 | Webhook verification | `jose` (ES256 JWT, JWK from Plaid) | Already in your toolbox |
 | Background work | Cloudflare Queues (webhook fan-in) + Cron Trigger (daily safety sync) | Webhook handler returns 200 fast; sync runs with retries |
 | Charts | Recharts | Line, area and stacked bar cover every view here |
-| UI | Tailwind 4 + Radix primitives | Matches another project |
-| Tests | vitest, fast-check (property tests), PGlite (in-process Postgres for DB tests), Playwright (e2e against a fake Plaid API over HTTP, and against the real Plaid Sandbox through an ngrok tunnel), axe-core | Same as another project; PGlite and the fake API keep most suites hermetic |
-| Lint/format | Biome, plus repo guard scripts | Matches another project |
+| UI | Tailwind 4 with small in-repo components | Few dependencies, easy to restyle |
+| Tests | vitest, fast-check (property tests), PGlite (in-process Postgres for DB tests), Playwright (e2e against a fake Plaid API over HTTP, and against the real Plaid Sandbox through an ngrok tunnel), axe-core | PGlite and the fake API keep most suites hermetic |
+| Lint/format | Biome, plus repo guard scripts | One fast tool for lint and format |
 
 **Deliberate omissions:** no Redis, no separate job service, no Plaid Node SDK, no client-side storage of financial data beyond the rendered page.
 
@@ -716,10 +716,12 @@ root: fire-v1
 
 ## 16. Open decisions
 
+**Decided 2026-11-25:** personal use, run locally, open-sourced; no public deployment. Gates that exist only for a public deployment or a public webhook endpoint are recorded as abandoned with that reason (see `docs/VERIFICATION.md`).
+
 Defaults are chosen so building can start now; each is cheap to change before the ticket that depends on it.
 
 1. **Personal tool or public product?** Default: personal (Trial plan, single household), built multi-tenant-ready. A public launch adds full Plaid Production approval, per-Item pricing, billing, and a stronger compliance posture. Decide before T5.3.
-2. **Web only, or an iOS app too?** Default: responsive web first. The pure engine package is reusable in an Expo app (as in another project) later. Decide before phase 5.
+2. **Web only, or an iOS app too?** Default: responsive web first. The pure engine package is reusable in an Expo app later. Decide before phase 5.
 3. **Household of two?** Default: yes, data model supports two people (ages matter for 59.5, 65 and Social Security). Decide before T0.2.
 4. **Default withdrawal rate:** 4% with a suggestion of 3.25% to 3.5% for retirements over 40 years. Decide before T2.2.
 5. **Default debt policy:** pay off at FI (balances added to the target). Decide before T1.5.

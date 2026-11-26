@@ -20,6 +20,21 @@ pnpm dev          # http://127.0.0.1:3100
 Sign up, enroll an authenticator app (required), then either enter accounts and spending by hand
 on Plan and Accounts, or connect a bank on Connections once Plaid keys are in `.env`.
 
+## Using it day to day (personal, local)
+
+This is built to run on your own machine; nothing needs to be public.
+
+- **Start**: Docker Desktop running, then `pnpm db:up` and `pnpm dev` (http://127.0.0.1:3100).
+- **Bank data**: Plaid Sandbox keys give test data. For your real accounts, request Plaid's
+  Trial plan (up to 10 live connections, no public app required), then put the production
+  `PLAID_SECRET` in `.env` and set `PLAID_ENV=production`.
+- **Freshness**: with no public URL Plaid cannot send webhooks, so the app refreshes any
+  connection older than 12 hours when you open it; "Refresh now" and `pnpm sync` force one.
+- **Backups**: `pnpm backup` writes a SQL dump to `backups/` (git-ignored). Never run
+  `supabase stop --no-backup`: it deletes the local database volume.
+- **Checks**: the test suites share the local stack but only ever create and remove
+  `@example.test` users, so they never touch your data.
+
 ## Layout
 
 | Path | What |

@@ -4,6 +4,15 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const root = new URL("..", import.meta.url);
+
+// The checker records absolute working directories in evidence; keep the
+// tracked plan ledger free of local home paths (open-source hygiene).
+{
+  const gates = new URL("GATES.md", root);
+  const text = readFileSync(gates, "utf8");
+  const scrubbed = text.replace(/cwd=\/[^;]*?\/fire-calculator/g, "cwd=<repo>");
+  if (scrubbed !== text) writeFileSync(gates, scrubbed);
+}
 const dir = new URL(".unlazy/fire-v1/gates/", root);
 const files = [
   ...readdirSync(dir)

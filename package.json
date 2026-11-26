@@ -20,7 +20,9 @@
     "db:up": "supabase start -x vector,logflare,imgproxy,supavisor,studio,postgres-meta",
     "db:down": "supabase stop",
     "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/db-migrate.ts",
-    "e2e": "playwright test -c e2e/playwright.config.ts"
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "sync": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/sync-all.ts",
+    "backup": "node scripts/backup.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
