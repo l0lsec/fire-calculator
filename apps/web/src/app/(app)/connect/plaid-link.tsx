@@ -40,12 +40,14 @@ export function PlaidLinkButton({
   accountSelection,
   label = "Connect a bank",
   onUpdated,
+  updatedText = "Reconnected.",
   variant = "primary",
 }: {
   itemId?: string;
   accountSelection?: boolean;
   label?: string;
   onUpdated?: () => Promise<unknown>;
+  updatedText?: string;
   variant?: "primary" | "secondary";
 }) {
   const router = useRouter();
@@ -77,7 +79,7 @@ export function PlaidLinkButton({
                 throw new Error(
                   `The bank still reports a problem (${r.error ?? "error"}). Try again in a minute.`,
                 );
-              setMsg({ tone: "good", text: "Reconnected." });
+              setMsg({ tone: "good", text: updatedText });
             } else {
               const ex = await fetch("/api/plaid/link/exchange", {
                 method: "POST",

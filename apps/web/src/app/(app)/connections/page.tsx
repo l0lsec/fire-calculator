@@ -57,8 +57,16 @@ export default async function ConnectionsPage() {
               </Notice>
             ) : null}
             <p className="text-ink-3">{i.accounts.join(", ") || "No accounts"}</p>
+            <p className="text-xs text-ink-3">
+              Missing an account? Choose accounts reopens this bank&apos;s account picker without using
+              another connection.
+            </p>
             <div className="flex flex-wrap items-center gap-2">
-              {i.needsUpdate ? <UpdateButton itemId={i.id} newAccounts={i.newAccounts} /> : null}
+              {i.needsUpdate && !i.newAccounts ? (
+                <UpdateButton itemId={i.id} mode="reconnect" />
+              ) : (
+                <UpdateButton itemId={i.id} mode="accounts" />
+              )}
               <ButtonForm
                 action={refreshItemAction}
                 label="Refresh now"

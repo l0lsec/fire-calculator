@@ -89,6 +89,15 @@ test("a login error shows Reconnect, and a repaired login clears it", async ({ p
   });
   const { item } = await itemFor(user.userId);
 
+  // A healthy connection always offers the account picker (no webhook needed).
+  await page.goto("/connections");
+  await expect(page.getByRole("button", { name: "Choose accounts" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reconnect" })).toHaveCount(0);
+  const pick = await page.request.post("/api/plaid/link/token", {
+    data: { itemId: item.id, accountSelection: true },
+  });
+  expect(pick.status()).toBe(200);
+
   await fakePlaid.setError(item.plaidItemId, "ITEM_LOGIN_REQUIRED");
   await fakePlaid.fireWebhook(item.plaidItemId, "ITEM", "ERROR", {
     error: { error_type: "ITEM_ERROR", error_code: "ITEM_LOGIN_REQUIRED", error_message: "login required" },
@@ -96,11 +105,13 @@ test("a login error shows Reconnect, and a repaired login clears it", async ({ p
   await page.goto("/connections");
   await expect(page.getByTestId("item-status")).toHaveText("Sign-in needed");
   await expect(page.getByRole("button", { name: "Reconnect" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Choose accounts" })).toHaveCount(0);
 
   await fakePlaid.setError(item.plaidItemId, null);
   await fakePlaid.fireWebhook(item.plaidItemId, "ITEM", "LOGIN_REPAIRED");
   await page.reload();
   await expect(page.getByTestId("item-status")).toHaveText("Connected");
+  await expect(page.getByRole("button", { name: "Choose accounts" })).toBeVisible();
 });
 
 test("delete my data revokes the connection, purges the household and signs out", async ({
