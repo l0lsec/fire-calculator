@@ -54,6 +54,9 @@ test("setup: a new household goes through four visible steps to an FI date, and 
   await expect(page.getByTestId("progress-count")).toHaveText("3 of 4 done");
   await expect(step).toHaveText("Step 4 of 4: Add your savings and investments");
 
+  // Connecting is the main way; adding by hand is for what cannot be connected.
+  await expect(page.getByRole("link", { name: "Connect a bank or brokerage" })).toBeVisible();
+  await page.getByText("Add an account that can't be connected").click();
   await page.getByLabel("Name").fill("Index funds");
   await page.getByLabel("Type").selectOption("taxable");
   await page.getByLabel("Balance").fill("60,000");

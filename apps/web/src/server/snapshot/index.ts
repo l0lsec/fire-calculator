@@ -51,6 +51,36 @@ export interface HouseholdData {
   derivedSpending: AnnualSpending | null;
   /** The spending figure the plan actually uses (see effectiveSpendingSource). */
   spendingSource: "manual" | "plaid";
+  /** Take-home pay measured from connected accounts (null when nothing is connected). */
+  measuredIncome: MeasuredIncome | null;
+  /** "measured" when the plan uses measuredIncome as take-home pay (see effectiveIncomeSource). */
+  incomeSource: "measured" | "manual";
+}
+
+export interface MeasuredIncome {
+  annualCents: number;
+  businessAnnualCents: number;
+  sources: AnnualSpending["incomeSources"];
+}
+
+/** Measured take-home pay per month, in whole cents (what the plan and an export both use). */
+export const measuredMonthlyCents = (m: MeasuredIncome) => Math.round(m.annualCents / 12);
+
+/** The engine income stream that stands for measured take-home pay. */
+export const MEASURED_INCOME_ID = "measured-take-home";
+
+/**
+ * Measured take-home pay is used whenever connected accounts show income,
+ * unless the user entered their own take-home pay, which replaces it. Other
+ * income they enter (a pension, Social Security, pay that lands in an account
+ * that is not connected) is added on top either way.
+ */
+export function effectiveIncomeSource(
+  income: HouseholdData["income"],
+  measured: MeasuredIncome | null,
+): "measured" | "manual" {
+  if (!measured || measured.annualCents <= 0) return "manual";
+  return income.some((s) => s.kind === "takeHome") ? "manual" : "measured";
 }
 
 type Profile = HouseholdData["spendingProfile"];
@@ -129,9 +159,18 @@ export async function loadHousehold(ctx: Ctx, asOf: string): Promise<HouseholdDa
     listContributionStreams(ctx.db, ctx.scope),
     getSpendingProfile(ctx.db, ctx.scope),
   ]);
-  const derivedSpending = wantsMeasured(spendingProfile)
-    ? await deriveHouseholdSpending(ctx, asOf, debts)
-    : null;
+  const connected = hasConnectedAccounts({ accounts });
+  const derived =
+    wantsMeasured(spendingProfile) || connected ? await deriveHouseholdSpending(ctx, asOf, debts) : null;
+  const derivedSpending = wantsMeasured(spendingProfile) ? derived : null;
+  const measuredIncome: MeasuredIncome | null =
+    connected && derived
+      ? {
+          annualCents: derived.incomeCents,
+          businessAnnualCents: derived.businessIncomeCents,
+          sources: derived.incomeSources,
+        }
+      : null;
   return {
     people,
     accounts,
@@ -141,6 +180,8 @@ export async function loadHousehold(ctx: Ctx, asOf: string): Promise<HouseholdDa
     spendingProfile,
     derivedSpending,
     spendingSource: effectiveSpendingSource(spendingProfile, derivedSpending),
+    measuredIncome,
+    incomeSource: effectiveIncomeSource(income, measuredIncome),
   };
 }
 
@@ -247,6 +288,19 @@ export function buildEngineInput(
         ...(s.startAge !== null ? { startAge: s.startAge } : {}),
         ...(s.endAge !== null ? { endAge: s.endAge } : {}),
       })),
+      ...(data.incomeSource === "measured" && data.measuredIncome && data.people[0]
+        ? [
+            {
+              id: MEASURED_INCOME_ID,
+              name: "Take-home pay (measured)",
+              kind: "takeHome" as const,
+              personId: data.people[0].id,
+              monthly: measuredMonthlyCents(data.measuredIncome) / 100,
+              growth: "inflation" as const,
+              phase: "working" as const,
+            },
+          ]
+        : []),
       ...scenario.extraIncome,
     ],
     contributions: data.contributions.map((c) => ({

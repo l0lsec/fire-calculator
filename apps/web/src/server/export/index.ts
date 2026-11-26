@@ -1,7 +1,8 @@
 // Export and import (BUILD_PLAN section 11, T4.4). The JSON export carries
 // everything the plan needs; importing it into an empty household reproduces
 // the same projection. Connected accounts import as manual ones (no tokens are
-// ever exported), and spending imports as the effective figure the plan used.
+// ever exported), and spending and measured take-home pay import as the
+// effective figures the plan used.
 import {
   createContributionStream,
   createDebt,
@@ -20,7 +21,7 @@ import {
 } from "@fire/db";
 import { z } from "zod";
 import { readScenario } from "../scenarios";
-import { loadHousehold, spendingBasis } from "../snapshot";
+import { loadHousehold, measuredMonthlyCents, spendingBasis } from "../snapshot";
 import { todayISO } from "../today";
 
 interface Ctx {
@@ -144,16 +145,33 @@ export async function exportHousehold(ctx: Ctx, asOf = todayISO()): Promise<Hous
       maturityDate: d.maturityDate,
       escrowMonthlyCents: d.escrowMonthlyCents,
     })),
-    income: data.income.map((i) => ({
-      personRef: i.personId,
-      name: i.name,
-      kind: i.kind,
-      monthlyCents: i.monthlyCents,
-      growth: i.growth,
-      phase: i.phase,
-      startAge: i.startAge,
-      endAge: i.endAge,
-    })),
+    income: [
+      ...data.income.map((i) => ({
+        personRef: i.personId,
+        name: i.name,
+        kind: i.kind,
+        monthlyCents: i.monthlyCents,
+        growth: i.growth,
+        phase: i.phase,
+        startAge: i.startAge,
+        endAge: i.endAge,
+      })),
+      // Measured take-home pay imports as the figure the plan used, like spending.
+      ...(data.incomeSource === "measured" && data.measuredIncome && data.people[0]
+        ? [
+            {
+              personRef: data.people[0].id,
+              name: "Take-home pay (measured)",
+              kind: "takeHome",
+              monthlyCents: measuredMonthlyCents(data.measuredIncome),
+              growth: "inflation",
+              phase: "working",
+              startAge: null,
+              endAge: null,
+            },
+          ]
+        : []),
+    ],
     contributions: data.contributions.map((c) => ({
       name: c.name,
       bucket: c.bucket,
