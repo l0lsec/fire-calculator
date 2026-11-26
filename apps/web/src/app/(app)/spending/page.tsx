@@ -4,7 +4,7 @@ import { ButtonForm } from "@/components/action-form";
 import { Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
-import { todayISO } from "@/server/snapshot";
+import { effectiveSpendingSource, todayISO } from "@/server/snapshot";
 import { categoryLabel, FLAG_TEXT, spendingView } from "@/server/spending";
 import { categoryEssentialAction, decideAction, useMeasuredAction } from "./actions";
 
@@ -16,7 +16,8 @@ export default async function SpendingPage() {
     spendingView(ctx, todayISO()),
     getSpendingProfile(ctx.db, ctx.scope),
   ]);
-  const usingMeasured = profile?.source === "plaid";
+  const usingMeasured = effectiveSpendingSource(profile, s) === "plaid";
+  const hasEstimate = (profile?.manualAnnualCents ?? 0) > 0;
   const queue = s.reviewQueue.slice(0, 40);
 
   if (!connected) {
@@ -86,12 +87,18 @@ export default async function SpendingPage() {
               ? "Your plan uses this measured spending."
               : "Your plan uses your own estimate. Switch to this measured figure?"}
           </p>
-          <ButtonForm
-            action={useMeasuredAction}
-            label={usingMeasured ? "Use my estimate instead" : "Use as my retirement baseline"}
-            variant={usingMeasured ? "ghost" : "primary"}
-            hidden={{ use: usingMeasured ? "false" : "true" }}
-          />
+          {usingMeasured && !hasEstimate ? (
+            <Link href="/plan" className="text-accent underline">
+              Enter my own estimate instead
+            </Link>
+          ) : (
+            <ButtonForm
+              action={useMeasuredAction}
+              label={usingMeasured ? "Use my estimate instead" : "Use as my retirement baseline"}
+              variant={usingMeasured ? "ghost" : "primary"}
+              hidden={{ use: usingMeasured ? "false" : "true" }}
+            />
+          )}
         </div>
       </Card>
 

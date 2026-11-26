@@ -1,5 +1,5 @@
 // Small, shared UI primitives. Tokens come from globals.css.
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ComponentProps, ReactNode, SelectHTMLAttributes } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -53,7 +53,7 @@ export function Field({
   );
 }
 
-export function Input({ className = "", ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className = "", ...rest }: ComponentProps<"input">) {
   return (
     <input
       className={`min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent ${className}`}

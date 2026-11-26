@@ -169,6 +169,7 @@ test("measured spending from the connected bank matches the golden total", async
   }
   expect(escrowAnnual).toBeGreaterThan(6000);
   expect(dollars).toBe(Math.round(25_960 + escrowAnnual));
-  await page.getByRole("button", { name: "Use as my retirement baseline" }).click();
+  // With no estimate entered, the measured figure is the plan's basis without being asked.
   await expect(page.getByText("Your plan uses this measured spending.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Enter my own estimate instead" })).toBeVisible();
 });
