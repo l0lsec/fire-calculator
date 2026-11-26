@@ -1,11 +1,14 @@
-import { createHouseholdForUser, createPerson, listTransactions, scopeFor } from "@fire/db";
+import { createHouseholdForUser, createPerson, listDebts, listTransactions, scopeFor } from "@fire/db";
 import { generateKeySpec, loadKeyring } from "@fire/db/crypto";
 import { createTestDb, type TestDb } from "@fire/db/testing";
 import { PlaidClient } from "@fire/plaid";
 import { FakePlaid, FIXTURE_AS_OF } from "@fire/plaid/fake";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { setDebtRate } from "../src/server/debts";
 import type { PlaidDeps } from "../src/server/plaid/config";
 import { exchangePublicToken } from "../src/server/plaid/link";
+import { syncItem } from "../src/server/plaid/sync";
+import { saveSpending } from "../src/server/profile";
 import { planForScenario } from "../src/server/snapshot";
 import { decide, setCategoryEssential, useMeasuredSpending } from "../src/server/spending";
 
@@ -83,5 +86,76 @@ describe("spending review", () => {
     ).toMatchObject({ ok: false });
     expect(await setCategoryEssential(ctx, "drop table", true)).toMatchObject({ ok: false });
     expect(await setCategoryEssential(ctx, "FOOD_AND_DRINK_RESTAURANT", true)).toEqual({ ok: true });
+  });
+
+  it("connected accounts measure spending without being asked, until the user enters their own estimate", async () => {
+    const ctx = { db: t.db, scope: scopeFor(await createHouseholdForUser(t.db, crypto.randomUUID(), "H3")) };
+    await createPerson(ctx.db, ctx.scope, { name: "Alex", birthMonth: 2026 * 12 + 10 - 40 * 12 });
+
+    // Nothing connected and nothing entered: the plan asks for spending.
+    const empty = await planForScenario(ctx, null, FIXTURE_AS_OF);
+    expect(empty.issues.find((i) => i.code === "no-spending")?.message).toMatch(/connect accounts/);
+
+    await exchangePublicToken(ctx, deps, fake.createPublicToken(), {
+      id: "ins_fixture",
+      name: "Fixture Bank",
+    });
+    const auto = await planForScenario(ctx, null, FIXTURE_AS_OF);
+    expect(auto.issues.map((i) => i.code)).not.toContain("no-spending");
+    expect(auto.data.spendingSource).toBe("plaid");
+    expect(auto.input!.spending.currentAnnual).toBe(25_960);
+
+    // An estimate the user chose and entered wins.
+    expect(await saveSpending(ctx, { source: "manual", annual: "50,000", essential: "30,000" })).toEqual({
+      ok: true,
+    });
+    const manual = await planForScenario(ctx, null, FIXTURE_AS_OF);
+    expect(manual.data.spendingSource).toBe("manual");
+    expect(manual.input!.spending.currentAnnual).toBe(50_000);
+
+    // And switching back to measured works as before.
+    await useMeasuredSpending(ctx, true);
+    const back = await planForScenario(ctx, null, FIXTURE_AS_OF);
+    expect(back.data.spendingSource).toBe("plaid");
+    expect(back.input!.spending.currentAnnual).toBe(25_960);
+  });
+
+  it("a rate typed on the dashboard clears the 'rate needed' issue and survives the next sync", async () => {
+    const ctx = { db: t.db, scope: scopeFor(await createHouseholdForUser(t.db, crypto.randomUUID(), "H4")) };
+    await createPerson(ctx.db, ctx.scope, { name: "Alex", birthMonth: 2026 * 12 + 10 - 40 * 12 });
+    const pub = fake.createPublicToken();
+    fake.setLiability(fake.itemIdForPublicToken(pub), "credit", "acc_card", { aprs: [] });
+    const item = await exchangePublicToken(ctx, deps, pub, { id: "ins_fixture", name: "Fixture Bank" });
+    const card = (await listDebts(ctx.db, ctx.scope)).find((d) => d.kind === "credit_card")!;
+    expect((await planForScenario(ctx, null, FIXTURE_AS_OF)).issues.map((i) => i.ref)).toContain(card.id);
+
+    expect(await setDebtRate(ctx, { id: card.id, apr: "" })).toMatchObject({
+      ok: false,
+      fieldErrors: { apr: expect.any(String) },
+    });
+    expect(await setDebtRate(ctx, { id: card.id, apr: "lots" })).toMatchObject({ ok: false });
+    expect(await setDebtRate(ctx, { id: card.id, apr: "140" })).toMatchObject({ ok: false });
+    expect(await setDebtRate(ctx, { id: crypto.randomUUID(), apr: "20" })).toMatchObject({ ok: false });
+
+    expect(await setDebtRate(ctx, { id: card.id, apr: "24.99%" })).toEqual({ ok: true });
+    const saved = (await listDebts(ctx.db, ctx.scope)).find((d) => d.id === card.id)!;
+    expect(saved.apr).toBeCloseTo(0.2499, 10);
+    expect(saved.aprSource).toBe("user");
+    const plan = await planForScenario(ctx, null, FIXTURE_AS_OF);
+    expect(plan.issues.map((i) => i.code)).not.toContain("unknown-apr");
+    expect(plan.input!.debts.some((d) => d.id === card.id)).toBe(true);
+
+    // Another household cannot set it.
+    const other = {
+      db: t.db,
+      scope: scopeFor(await createHouseholdForUser(t.db, crypto.randomUUID(), "H5")),
+    };
+    expect(await setDebtRate(other, { id: card.id, apr: "1" })).toMatchObject({ ok: false });
+
+    // The bank still reports no APR; the next sync leaves the typed rate alone.
+    await syncItem(ctx, deps, item.itemId, undefined, { asOf: FIXTURE_AS_OF });
+    const resynced = (await listDebts(ctx.db, ctx.scope)).find((d) => d.id === card.id)!;
+    expect(resynced.apr).toBeCloseTo(0.2499, 10);
+    expect(resynced.aprSource).toBe("user");
   });
 });

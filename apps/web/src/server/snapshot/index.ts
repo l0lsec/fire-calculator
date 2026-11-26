@@ -48,6 +48,26 @@ export interface HouseholdData {
   contributions: Awaited<ReturnType<typeof listContributionStreams>>;
   spendingProfile: Awaited<ReturnType<typeof getSpendingProfile>>;
   derivedSpending: AnnualSpending | null;
+  /** The spending figure the plan actually uses (see effectiveSpendingSource). */
+  spendingSource: "manual" | "plaid";
+}
+
+type Profile = HouseholdData["spendingProfile"];
+
+/** True unless the user chose their own estimate and entered one, so measured spending is worth deriving. */
+const wantsMeasured = (p: Profile) => p?.source === "plaid" || (p?.manualAnnualCents ?? 0) <= 0;
+
+/** Any account from a bank link or the iPhone companion, i.e. one whose transactions can measure spending. */
+export const hasConnectedAccounts = (data: Pick<HouseholdData, "accounts">) =>
+  data.accounts.some((a) => a.source !== "manual");
+
+/**
+ * Measured spending from connected accounts is the default: it is used whenever there is any,
+ * unless the user explicitly chose their own estimate and entered a figure.
+ */
+export function effectiveSpendingSource(p: Profile, derived: AnnualSpending | null): "manual" | "plaid" {
+  if (!derived || derived.livingCents <= 0) return "manual";
+  return wantsMeasured(p) ? "plaid" : "manual";
 }
 
 export { todayISO } from "../today";
@@ -98,9 +118,19 @@ export async function loadHousehold(ctx: Ctx, asOf: string): Promise<HouseholdDa
     listContributionStreams(ctx.db, ctx.scope),
     getSpendingProfile(ctx.db, ctx.scope),
   ]);
-  const derivedSpending =
-    spendingProfile?.source === "plaid" ? await deriveHouseholdSpending(ctx, asOf, debts) : null;
-  return { people, accounts, debts, income, contributions, spendingProfile, derivedSpending };
+  const derivedSpending = wantsMeasured(spendingProfile)
+    ? await deriveHouseholdSpending(ctx, asOf, debts)
+    : null;
+  return {
+    people,
+    accounts,
+    debts,
+    income,
+    contributions,
+    spendingProfile,
+    derivedSpending,
+    spendingSource: effectiveSpendingSource(spendingProfile, derivedSpending),
+  };
 }
 
 /** Annual living spending (excluding escrow, which comes from mortgages) and its essential share, in dollars. */
@@ -110,11 +140,10 @@ export function spendingBasis(
 ): { annual: number; essential: number; source: "manual" | "plaid" } {
   let annual: number;
   let essential: number;
-  let source: "manual" | "plaid" = "manual";
-  if (data.spendingProfile?.source === "plaid" && data.derivedSpending) {
+  const source = data.spendingSource;
+  if (source === "plaid" && data.derivedSpending) {
     annual = data.derivedSpending.livingCents / 100;
     essential = data.derivedSpending.livingEssentialCents / 100;
-    source = "plaid";
   } else {
     annual = (data.spendingProfile?.manualAnnualCents ?? 0) / 100;
     essential = (data.spendingProfile?.manualEssentialCents ?? 0) / 100;
@@ -168,7 +197,9 @@ export function buildEngineInput(
   if (spend.annual <= 0) {
     issues.push({
       code: "no-spending",
-      message: "Enter your annual spending, or connect accounts to measure it.",
+      message: hasConnectedAccounts(data)
+        ? "Your connected accounts show no spending in the last 12 months yet. Enter an estimate for now."
+        : "Enter your annual spending, or connect accounts to measure it.",
     });
   }
 

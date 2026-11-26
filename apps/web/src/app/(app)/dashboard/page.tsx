@@ -2,17 +2,18 @@ import Link from "next/link";
 import { ProjectionChart } from "@/components/charts/projection-chart";
 import { Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
-import { age, duration, pct, usd } from "@/lib/format";
+import { age, duration, pct, usd, usdCents } from "@/lib/format";
 import { dashboardModel, type LadderRow } from "@/server/dashboard";
+import { DEBT_KIND_LABELS } from "@/server/debts";
 import { planForScenario } from "@/server/snapshot";
+import { RateEntry, type RateNeeded } from "./rate-entry";
 
 export const metadata = { title: "Dashboard | FIRE Planner" };
 
-const FIX: Record<string, string> = {
-  "no-people": "/plan",
-  "no-spending": "/plan",
-  "unknown-apr": "/debts",
-  invalid: "/plan",
+const FIX: Record<string, { href: string; label: string }> = {
+  "no-people": { href: "/plan", label: "Add birth month" },
+  "no-spending": { href: "/plan", label: "Enter spending" },
+  invalid: { href: "/plan", label: "Review plan" },
 };
 
 function Ladder({ rows }: { rows: LadderRow[] }) {
@@ -69,8 +70,17 @@ export default async function DashboardPage({
 }) {
   const ctx = await requireContext();
   const { scenario } = await searchParams;
-  const m = dashboardModel(await planForScenario(ctx, scenario));
+  const plan = await planForScenario(ctx, scenario);
+  const m = dashboardModel(plan);
   const h = m.headline;
+  const debtsById = new Map(plan.data.debts.map((d) => [d.id, d]));
+  const ratesNeeded: RateNeeded[] = m.issues.flatMap((i) => {
+    const d = i.code === "unknown-apr" && i.ref ? debtsById.get(i.ref) : undefined;
+    return d
+      ? [{ id: d.id, name: d.name, detail: `${DEBT_KIND_LABELS[d.kind]} · ${usdCents(d.balanceCents)} owed` }]
+      : [];
+  });
+  const otherIssues = m.issues.filter((i) => !(i.code === "unknown-apr" && i.ref && debtsById.has(i.ref)));
 
   return (
     <div className="flex flex-col gap-6">
@@ -95,19 +105,36 @@ export default async function DashboardPage({
 
       {m.issues.length ? (
         <Card title={m.ready ? "Finish your plan" : "Let's set up your plan"}>
-          <ul className="flex flex-col gap-2">
-            {m.issues.map((i) => (
-              <li
-                key={`${i.code}-${i.ref ?? ""}`}
-                className="flex flex-wrap items-center justify-between gap-2 text-sm"
-              >
-                <span>{i.message}</span>
-                <Link className="text-accent underline" href={FIX[i.code] ?? "/plan"}>
-                  Fix
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col gap-4">
+            {otherIssues.length ? (
+              <ul className="flex flex-col gap-2">
+                {otherIssues.map((i) => {
+                  const fix = FIX[i.code] ?? { href: "/plan", label: "Open plan" };
+                  return (
+                    <li
+                      key={`${i.code}-${i.ref ?? ""}`}
+                      className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                    >
+                      <span>{i.message}</span>
+                      <Link className="text-accent underline" href={fix.href}>
+                        {fix.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {ratesNeeded.length ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-ink-2">
+                  {ratesNeeded.length === 1
+                    ? "This debt has no interest rate yet, so it's left out of the plan. Type it in:"
+                    : "These debts have no interest rate yet, so they're left out of the plan. Type them in:"}
+                </p>
+                <RateEntry debts={ratesNeeded} autoFocus={otherIssues.length === 0} />
+              </div>
+            ) : null}
+          </div>
         </Card>
       ) : null}
 

@@ -191,7 +191,7 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
       savingsRate,
       spendingAnnual: spendingNow,
       retirementSpending,
-      spendingSource: plan.data.spendingProfile?.source === "plaid" ? "plaid" : "manual",
+      spendingSource: plan.data.spendingSource,
     },
     ladder,
     chart,

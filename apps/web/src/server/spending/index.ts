@@ -4,6 +4,7 @@ import {
   type Db,
   getTransaction,
   type HouseholdScope,
+  listAccounts,
   listItems,
   setCategoryRule,
   setOverride,
@@ -11,7 +12,7 @@ import {
 } from "@fire/db";
 import { z } from "zod";
 import type { ActionResult } from "../forms";
-import { deriveHouseholdSpending } from "../snapshot";
+import { deriveHouseholdSpending, hasConnectedAccounts } from "../snapshot";
 
 interface Ctx {
   db: Db;
@@ -37,8 +38,12 @@ export function categoryLabel(c: string): string {
 }
 
 export async function spendingView(ctx: Ctx, asOf: string) {
-  const [s, items] = await Promise.all([deriveHouseholdSpending(ctx, asOf), listItems(ctx.db, ctx.scope)]);
-  return { s, connected: items.length > 0 };
+  const [s, items, accounts] = await Promise.all([
+    deriveHouseholdSpending(ctx, asOf),
+    listItems(ctx.db, ctx.scope),
+    listAccounts(ctx.db, ctx.scope),
+  ]);
+  return { s, connected: items.length > 0 || hasConnectedAccounts({ accounts }) };
 }
 
 const Decision = z.discriminatedUnion("decision", [

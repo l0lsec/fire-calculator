@@ -104,6 +104,21 @@ export async function saveDebt(ctx: Ctx, input: Record<string, string>, id?: str
   return { ok: true };
 }
 
+const DebtRateForm = z.object({
+  id: z.string().uuid("Debt not found"),
+  apr: percent({ max: 100 }),
+});
+
+/** Set only a debt's interest rate (the dashboard's inline "rate needed" box). */
+export async function setDebtRate(ctx: Ctx, input: Record<string, string>): Promise<ActionResult> {
+  const parsed = parseForm(DebtRateForm, input);
+  if ("result" in parsed) return parsed.result;
+  const v = parsed.data;
+  if (!(await getDebt(ctx.db, ctx.scope, v.id))) return { ok: false, error: "Debt not found" };
+  await updateDebt(ctx.db, ctx.scope, v.id, { apr: v.apr });
+  return { ok: true };
+}
+
 export async function removeDebt(ctx: Ctx, id: string): Promise<ActionResult> {
   const existing = await getDebt(ctx.db, ctx.scope, id);
   if (!existing) return { ok: false, error: "Debt not found" };

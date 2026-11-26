@@ -1,11 +1,12 @@
 import { listItems } from "@fire/db";
 import { yearMonth } from "@fire/engine/core";
+import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
 import { Card, Disclaimer } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { pct, usd, usdCents } from "@/lib/format";
 import { loadScenario, readScenario } from "@/server/scenarios";
-import { loadHousehold, todayISO } from "@/server/snapshot";
+import { hasConnectedAccounts, loadHousehold, todayISO } from "@/server/snapshot";
 import {
   deleteContributionAction,
   deleteIncomeAction,
@@ -49,6 +50,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const s = readScenario(row);
   const a = s.assumptions;
   const people = data.people.map((p) => ({ id: p.id, name: p.name }));
+  const connected = items.length > 0 || hasConnectedAccounts(data);
 
   return (
     <div className="flex flex-col gap-6">
@@ -82,15 +84,25 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       </Card>
 
       <Card title="Spending today">
+        {data.spendingSource === "plaid" && data.derivedSpending ? (
+          <p className="mb-4 text-sm text-ink-2" data-testid="measured-spending">
+            Measured from your connected accounts:{" "}
+            <span className="num font-medium text-ink">{usdCents(data.derivedSpending.totalCents)}</span> a
+            year, of which escrow {usdCents(data.derivedSpending.escrowCents)}. Your plan uses this.{" "}
+            <Link href="/spending" className="text-accent underline">
+              Review it
+            </Link>
+          </p>
+        ) : null}
         <SpendingForm
-          plaidAvailable={items.length > 0}
+          plaidAvailable={connected}
           v={{
-            source: data.spendingProfile?.source ?? "manual",
+            source: data.spendingSource,
             annual: centsIn(data.spendingProfile?.manualAnnualCents),
             essential: centsIn(data.spendingProfile?.manualEssentialCents),
           }}
         />
-        {data.derivedSpending ? (
+        {data.spendingSource === "manual" && connected && data.derivedSpending?.livingCents ? (
           <p className="mt-3 text-sm text-ink-3">
             From your accounts: {usdCents(data.derivedSpending.totalCents)} a year, of which escrow{" "}
             {usdCents(data.derivedSpending.escrowCents)}.
