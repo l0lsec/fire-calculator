@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
+import { ValueBars } from "@/components/charts/value-bars";
 import { Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
+import { scenarioBars } from "@/lib/chart-data";
 import { duration, monthName, pct, usd } from "@/lib/format";
 import { COMPARE_LEVELS, type CompareLevel, compareScenarios, investVsPrepay } from "@/server/compare";
 import { allScenarios } from "@/server/scenarios";
@@ -39,6 +41,7 @@ export default async function ScenariosPage({
   const cmp = await compareScenarios(ctx, chosen);
   const base = await planForScenario(ctx, baseline.id);
   const extra = Math.max(0, Math.min(100_000, Number(sp.extra ?? 500) || 500));
+  const bars = scenarioBars(cmp.summaries);
   const prepay = base.input ? base.input.debts.map((d) => investVsPrepay(base.input!, d.id, extra)) : [];
 
   return (
@@ -84,6 +87,42 @@ export default async function ScenariosPage({
         </ul>
         <NewWhatIf from={baseline.id} />
       </Card>
+
+      {bars.fiDate.length + bars.fiNumber.length > 0 && cmp.summaries.length > 1 ? (
+        <Card title="FI date and FI number">
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium">Years until FI</h3>
+              {bars.fiDate.length ? (
+                <ValueBars
+                  bars={bars.fiDate}
+                  label="Years until FI by scenario, with the month each reaches it"
+                  valueLabel="Reaches FI"
+                  testId="scenario-fi-date-chart"
+                />
+              ) : (
+                <p className="text-sm text-ink-3">No scenario reaches FI within its plan.</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium">FI number</h3>
+              <ValueBars
+                bars={bars.fiNumber.map((b) => ({ ...b, text: usd(b.value) }))}
+                label="FI number by scenario"
+                valueLabel="FI number"
+                color="var(--chart-2)"
+                testId="scenario-fi-number-chart"
+              />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-ink-3">
+            Shorter bars on the left reach FI sooner; shorter bars on the right need less invested.
+            {bars.missing.length
+              ? ` Not shown: ${bars.missing.map((m) => `${m.name} (${m.reason})`).join(", ")}.`
+              : ""}
+          </p>
+        </Card>
+      ) : null}
 
       <Card title="Side by side">
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable table must be reachable by keyboard */}

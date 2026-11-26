@@ -63,6 +63,15 @@ export interface DashboardModel {
   /** What each headline tile is made of (null until the plan can run). */
   breakdowns: Record<TileId, Breakdown> | null;
   chart: ChartPoint[];
+  /** Where each of the next 12 months' income goes (dollars; the parts add up to income). */
+  incomeByMonth: {
+    label: string;
+    income: number;
+    living: number;
+    escrow: number;
+    interest: number;
+    saved: number;
+  }[];
   retireLabel: string | null;
   chips: { label: string; value: string }[];
   warnings: EngineWarning[];
@@ -103,6 +112,7 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
       ladder: [],
       breakdowns: null,
       chart: [],
+      incomeByMonth: [],
       retireLabel: null,
       chips,
       warnings: [],
@@ -195,6 +205,10 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
     ladder,
     breakdowns: bd.tiles,
     chart,
+    incomeByMonth: bd.firstYear.byMonth.map(({ k, ...m }) => ({
+      label: monthName(input.startMonth + k),
+      ...m,
+    })),
     retireLabel,
     chips,
     warnings: r.warnings,
