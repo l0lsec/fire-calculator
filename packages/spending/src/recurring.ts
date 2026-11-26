@@ -170,7 +170,8 @@ function series(
     lastDate: iso(last.d),
     nextDate: next,
     occurrences: charges.length,
-    monthlyCents: Math.round((typical * 30.44) / band.days),
+    // After a price change the new price is what it costs from now on.
+    monthlyCents: Math.round(((priceChange ? last.cents : typical) * 30.44) / band.days),
     variable,
     active: asOf <= last.d + band.days * 1.5 + 3,
     isNew: first.d >= asOf - (band.days * 3 + 5),

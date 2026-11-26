@@ -10,6 +10,7 @@ import { createClient } from "../packages/db/src/client";
 import { scopeFor } from "../packages/db/src/db";
 import { markAlertsNotified, setAlertSettings } from "../packages/db/src/repos/insights";
 import { households } from "../packages/db/src/schema";
+import { expectedCents } from "../packages/spending/src";
 
 const run = promisify(execFile);
 const dryRun = process.argv.includes("--dry-run");
@@ -79,7 +80,7 @@ try {
           ? `Over budget: ${over.map((b) => categoryName(b.category)).join(", ")}.`
           : "All budgets on track.",
         soon.length
-          ? `${soon.length} bills due this week, about ${usd(soon.reduce((s, x) => s + x.typicalCents, 0))}.`
+          ? `${soon.length} bills due this week, about ${usd(soon.reduce((s, x) => s + expectedCents(x), 0))}.`
           : "",
       ].filter(Boolean);
       await notify("Your week", parts.join(" "));

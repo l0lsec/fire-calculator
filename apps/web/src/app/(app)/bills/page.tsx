@@ -1,4 +1,4 @@
-import type { RecurringSeries } from "@fire/spending";
+import { expectedCents, type RecurringSeries } from "@fire/spending";
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
 import { Card, Notice } from "@/components/ui";
@@ -37,7 +37,7 @@ function Row({ s, hidden = false }: { s: RecurringSeries; hidden?: boolean }) {
         </p>
         <p className="text-xs text-ink-3">
           {s.variable ? "about " : ""}
-          {usdCents(s.typicalCents, { cents: true })} {CADENCE[s.cadence]} · {categoryName(s.primary)} ·{" "}
+          {usdCents(expectedCents(s), { cents: true })} {CADENCE[s.cadence]} · {categoryName(s.primary)} ·{" "}
           {s.active ? `next ${s.nextDate}` : `last ${s.lastDate}`}
           {s.confidence === "likely" ? " · seen twice so far" : ""}
         </p>
@@ -126,7 +126,7 @@ export default async function BillsPage() {
                 </span>
                 <span className="tabular-nums">
                   {s.variable ? "about " : ""}
-                  {usdCents(s.variable ? s.lastCents : s.typicalCents, { cents: true })}
+                  {usdCents(expectedCents(s), { cents: true })}
                 </span>
               </li>
             ))}

@@ -59,6 +59,11 @@ export function weekOf(d: string): string {
   return `${y}-W${String(week).padStart(2, "0")}`;
 }
 
+/** The next charge: the latest amount when it varies or the price just moved, else the typical one. */
+export function expectedCents(s: RecurringSeries): number {
+  return s.variable || s.priceChangeCents !== 0 ? s.lastCents : s.typicalCents;
+}
+
 export function categoryName(primary: string): string {
   return primary
     .toLowerCase()
@@ -109,9 +114,9 @@ export function buildAlerts(opts: {
         kind: "bill-due",
         severity: "info",
         title: `${s.name} due ${until === 0 ? "today" : until === 1 ? "tomorrow" : `in ${until} days`}`,
-        detail: `Expected about ${usd(s.variable ? s.lastCents : s.typicalCents)} on ${s.nextDate}.`,
+        detail: `Expected about ${usd(expectedCents(s))} on ${s.nextDate}.`,
         date: s.nextDate,
-        amountCents: s.typicalCents,
+        amountCents: expectedCents(s),
       });
     }
   }

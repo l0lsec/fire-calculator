@@ -5,6 +5,7 @@ import {
   deriveSpending,
   detectRecurring,
   displayName,
+  expectedCents,
   merchantKey,
   monthlyAverages,
   type SpendingTx,
@@ -109,6 +110,9 @@ describe("recurring", () => {
 
   it("flags a fixed price that went up, and not a utility whose bill varies", () => {
     expect(by("Spotify")[0]?.priceChangeCents).toBe(100);
+    expect(expectedCents(by("Spotify")[0]!)).toBe(1199);
+    expect(by("Spotify")[0]?.monthlyCents).toBe(1199);
+    expect(expectedCents(by("Netflix")[0]!)).toBe(1549);
     const [u] = by("Con Edison");
     expect(u).toMatchObject({ kind: "bill", variable: true, priceChangeCents: 0 });
   });
