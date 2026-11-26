@@ -44,5 +44,7 @@ FinanceKit is a managed entitlement: Apple must approve it for your team first.
    pick it as the run destination, and press Run.
 4. On the phone: **Paste pairing code**, **Allow Wallet access**, **Sync now**.
 
+Privacy policy for the app: [PRIVACY-SYNC.md](PRIVACY-SYNC.md).
+
 What FinanceKit does not report: the Apple Card APR. The card arrives in the
 debt plan as "rate needed"; enter it once on the Debts page.
