@@ -52,6 +52,8 @@ export interface RecurringSeries {
   /** Last charge minus the typical earlier charge, when a fixed price moved. */
   priceChangeCents: number;
   transactionIds: string[];
+  /** The account the latest charge came from. */
+  accountId: string;
 }
 
 function day(d: string): number {
@@ -178,6 +180,7 @@ function series(
     confidence: charges.length >= 3 ? "confirmed" : "likely",
     priceChangeCents: priceChange,
     transactionIds: charges.map((x) => x.c.tx.id),
+    accountId: c.tx.accountId,
   };
 }
 
@@ -194,19 +197,20 @@ function plans(charges: Charge[]): Charge[][] {
 }
 
 /**
- * Recurring outflows (living expenses and loan payments) as of `asOf`.
- * Pass classifications whose window reaches `asOf` (see deriveSpending).
+ * Repeating flows among `items`, grouped by their key (amounts in positive
+ * cents). Used for recurring charges here and for cash-flow forecasting.
  */
-export function detectRecurring(classified: Classified[], asOf: string): RecurringSeries[] {
+export function detectSeries(
+  items: { c: Classified; key: string; cents: number }[],
+  asOf: string,
+): RecurringSeries[] {
   const now = day(asOf);
   const groups = new Map<string, Charge[]>();
-  for (const c of classified) {
-    if (c.tx.pending || c.tx.amountCents <= 0) continue;
-    if (c.class !== "living_expense" && c.class !== "debt_payment") continue;
-    const k = merchantKey(c.tx.name, c.tx.merchant);
-    const list = groups.get(k) ?? [];
-    list.push({ c, d: day(c.tx.date), cents: c.tx.amountCents });
-    groups.set(k, list);
+  for (const it of items) {
+    if (it.c.tx.pending || it.cents <= 0) continue;
+    const list = groups.get(it.key) ?? [];
+    list.push({ c: it.c, d: day(it.c.tx.date), cents: it.cents });
+    groups.set(it.key, list);
   }
   const out: RecurringSeries[] = [];
   for (const [k, list] of groups) {
@@ -227,3 +231,27 @@ export function detectRecurring(classified: Classified[], asOf: string): Recurri
   }
   return out.sort((a, b) => b.monthlyCents - a.monthlyCents);
 }
+
+/**
+ * Recurring outflows (living expenses and loan payments) as of `asOf`.
+ * Pass classifications whose window reaches `asOf` (see deriveSpending).
+ */
+export function detectRecurring(classified: Classified[], asOf: string): RecurringSeries[] {
+  return detectSeries(
+    classified
+      .filter((c) => c.tx.amountCents > 0 && (c.class === "living_expense" || c.class === "debt_payment"))
+      .map((c) => ({ c, key: merchantKey(c.tx.name, c.tx.merchant), cents: c.tx.amountCents })),
+    asOf,
+  );
+}
+
+/** Next occurrence after `date` for a cadence (calendar months for monthly and longer). */
+export function advance(date: string, cadence: Cadence, stepDays: number): string {
+  const months = { monthly: 1, quarterly: 3, yearly: 12 }[cadence as "monthly"] ?? 0;
+  return months ? addMonths(date, months) : iso(day(date) + stepDays);
+}
+
+/** Typical days between occurrences of a cadence. */
+export const CADENCE_DAYS: Record<Cadence, number> = Object.fromEntries(
+  CADENCES.map((c) => [c.cadence, c.days]),
+) as Record<Cadence, number>;

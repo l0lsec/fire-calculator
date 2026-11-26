@@ -1,6 +1,7 @@
 // Alerts: what changed that is worth a look. Pure, and keyed so a dismissal
 // or a notification is remembered per event (a new price, a new month).
 import type { BudgetLine } from "./budgets";
+import type { CashForecast } from "./cashflow";
 import type { Classified } from "./index";
 import type { RecurringSeries } from "./recurring";
 
@@ -11,7 +12,9 @@ export type AlertKind =
   | "budget-over"
   | "budget-near"
   | "low-balance"
-  | "bill-due";
+  | "bill-due"
+  | "overdraft-risk"
+  | "spending-pace";
 
 export interface Alert {
   key: string;
@@ -49,6 +52,15 @@ function day(d: string): number {
   return Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86_400_000;
 }
 
+/** "Dec 3": dates in alert text. */
+function shortDate(d: string): string {
+  return new Date(day(d) * 86_400_000).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** ISO week label, so a low balance is raised at most once a week per account. */
 export function weekOf(d: string): string {
   const t = new Date(day(d) * 86_400_000);
@@ -78,6 +90,8 @@ export function buildAlerts(opts: {
   classified: Classified[];
   accounts: AlertAccount[];
   settings: AlertSettings;
+  /** The cash forecast: raises overdraft-risk and spending-pace alerts. */
+  cash?: CashForecast | null;
 }): Alert[] {
   const { asOf, settings } = opts;
   const now = day(asOf);
@@ -176,6 +190,45 @@ export function buildAlerts(opts: {
       date: asOf,
       amountCents: bal,
     });
+  }
+
+  const cash = opts.cash;
+  if (cash) {
+    const names = new Map(cash.accounts.map((f) => [f.account.id, f.account.name]));
+    for (const f of cash.accounts) {
+      if (f.role !== "spending" || !f.shortfall) continue;
+      const s = f.shortfall;
+      const move = cash.transfers.find((t) => t.toAccountId === f.account.id);
+      out.push({
+        // Keyed by week, so a forecast that shifts a day does not alert again.
+        key: `overdraft:${f.account.id}:${weekOf(s.date)}`,
+        kind: "overdraft-risk",
+        severity: "bad",
+        title: `Overdraft risk: ${f.account.name} on ${shortDate(s.date)}`,
+        detail:
+          `Bills due before money comes in take it to ${usd(s.cents)}` +
+          `${s.cause ? ` (${s.cause} on ${shortDate(s.date)})` : ""}` +
+          `${s.worstCents < s.cents ? `, and to ${usd(s.worstCents)} by ${shortDate(s.worstDate)}` : ""}.` +
+          (move
+            ? ` Move ${usd(move.cents)} from ${names.get(move.fromAccountId) ?? "another account"} by ${shortDate(move.byDate)}.`
+            : " Hold off on spending from it until then."),
+        date: s.date,
+        amountCents: s.worstCents,
+      });
+    }
+    const sp = cash.spendable;
+    const committedShort = cash.accounts.some((f) => f.role === "spending" && f.shortfall);
+    if (sp?.paceRunsOut && !committedShort && day(sp.paceRunsOut) - day(asOf) <= 14) {
+      out.push({
+        key: `pace:${weekOf(asOf)}`,
+        kind: "spending-pace",
+        severity: "warn",
+        title: `At your usual spending you run short around ${shortDate(sp.paceRunsOut)}`,
+        detail: `Safe to spend${sp.nextPayday ? ` until ${shortDate(sp.nextPayday.date)}` : ""}: ${usd(sp.safeToSpendCents)}, about ${usd(sp.perDayCents)} a day.`,
+        date: asOf,
+        amountCents: sp.safeToSpendCents,
+      });
+    }
   }
 
   const rank = { bad: 0, warn: 1, info: 2 };

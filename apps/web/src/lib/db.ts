@@ -5,11 +5,16 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { cache } from "react";
 
 /**
- * One database client per request. On Workers a socket opened for one request
- * cannot serve another, so there is deliberately no module-level pool;
- * Hyperdrive pools at the edge. In Node (dev, tests) DATABASE_URL is used.
+ * On Workers: one database client per request. A socket opened for one
+ * request cannot serve another there, so there is deliberately no
+ * module-level pool; Hyperdrive pools at the edge.
+ *
+ * In Node (dev, tests) one shared pool serves every request instead. A client
+ * per request there leaves each connection idle for 20 seconds after its
+ * request, and a burst of page loads and link prefetches then runs Postgres
+ * out of connection slots.
  */
-function connectionString(): string {
+function hyperdrive(): string | null {
   try {
     const { env } = getCloudflareContext();
     const hd = (env as { HYPERDRIVE?: { connectionString: string } }).HYPERDRIVE;
@@ -17,9 +22,16 @@ function connectionString(): string {
   } catch {
     // Not running inside the Workers runtime.
   }
-  const url = process.env.DATABASE_URL;
-  if (!url || url === "via-hyperdrive-binding") throw new Error("no database configured");
-  return url;
+  return null;
 }
 
-export const getDb = cache((): Db => createClient(connectionString()).db);
+let nodePool: Db | null = null;
+
+export const getDb = cache((): Db => {
+  const hd = hyperdrive();
+  if (hd) return createClient(hd).db;
+  const url = process.env.DATABASE_URL;
+  if (!url || url === "via-hyperdrive-binding") throw new Error("no database configured");
+  nodePool ??= createClient(url, { max: 10 }).db;
+  return nodePool;
+});

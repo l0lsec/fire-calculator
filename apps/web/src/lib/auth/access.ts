@@ -2,7 +2,9 @@
 // middleware, the server context and the route gate all share one truth.
 //
 // - Public: auth pages, the Plaid webhook (it verifies Plaid's JWT instead),
-//   internal cron/queue routes (they verify a bearer secret instead).
+//   internal cron/queue routes (they verify a bearer secret instead), and the
+//   AI endpoints /api/mcp and /api/v1/ (they verify an AI access key instead,
+//   which only an AAL2 session can create).
 // - /mfa: needs a signed-in session (AAL1 is enough: that is where AAL2 is earned).
 // - Everything else needs AAL2 (password plus TOTP). Pages redirect; APIs get 401.
 
@@ -15,6 +17,8 @@ export const PUBLIC_PREFIXES = [
   "/auth/",
   "/api/plaid/webhook",
   "/api/internal/",
+  "/api/mcp",
+  "/api/v1/",
   "/_next/",
   "/favicon.ico",
   "/robots.txt",

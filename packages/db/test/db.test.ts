@@ -30,7 +30,7 @@ describe("migrations", () => {
     const tables = await t.pg.query<{ tablename: string; rowsecurity: boolean }>(
       "select tablename, rowsecurity from pg_tables where schemaname = 'fire' order by tablename",
     );
-    expect(tables.rows.length).toBe(21);
+    expect(tables.rows.length).toBe(22);
     for (const row of tables.rows) expect(row.rowsecurity).toBe(true);
   });
 });
@@ -214,6 +214,17 @@ describe("household isolation", () => {
   const budgetOfA = async () => (await repos.listBudgets(db, A.scope)).map((b) => b.monthlyCents);
   const stateOfA = async () =>
     (await repos.listAlertState(db, A.scope)).map((r) => [r.key, Boolean(r.dismissedAt)]);
+  const aToken = async () =>
+    (
+      await repos.createApiToken(db, A.scope, {
+        userId: crypto.randomUUID(),
+        name: "A key",
+        access: "write",
+        tokenHash: `hash-A-${crypto.randomUUID()}`,
+        prefix: "fire_aaaaaa",
+        expiresAt: null,
+      })
+    ).id;
   const probes: Record<string, () => Promise<void>> = {
     listBudgets: async () =>
       expect((await repos.listBudgets(db, B.scope)).every((r) => own(r, B))).toBe(true),
@@ -484,6 +495,32 @@ describe("household isolation", () => {
     deleteItem: async () => expect(await repos.deleteItem(db, B.scope, A.itemId)).toBe(false),
     listSyncEvents: async () =>
       expect((await repos.listSyncEvents(db, B.scope)).every((r) => own(r, B))).toBe(true),
+    createApiToken: async () => {
+      await repos.createApiToken(db, B.scope, {
+        userId: crypto.randomUUID(),
+        name: "B key",
+        access: "read",
+        tokenHash: `hash-B-${crypto.randomUUID()}`,
+        prefix: "fire_bbbbbb",
+        expiresAt: null,
+      });
+      expect((await repos.listApiTokens(db, A.scope)).every((k) => k.name !== "B key")).toBe(true);
+    },
+    listApiTokens: async () => {
+      const aKey = await aToken();
+      expect((await repos.listApiTokens(db, B.scope)).some((k) => k.id === aKey)).toBe(false);
+    },
+    revokeApiToken: async () => {
+      const aKey = await aToken();
+      expect(await repos.revokeApiToken(db, B.scope, aKey)).toBeNull();
+      expect((await repos.listApiTokens(db, A.scope)).some((k) => k.id === aKey)).toBe(true);
+    },
+    restoreApiToken: async () => {
+      const aKey = await aToken();
+      await repos.revokeApiToken(db, A.scope, aKey);
+      expect(await repos.restoreApiToken(db, B.scope, aKey)).toBe(false);
+      expect(await repos.restoreApiToken(db, A.scope, aKey)).toBe(true);
+    },
     countHouseholdRows: async () => {
       const a = await repos.countHouseholdRows(db, A.scope);
       expect(a.households).toBe(1);
@@ -500,6 +537,8 @@ describe("household isolation", () => {
   };
 
   // Functions that are unscoped by design (bootstrap, system lookups, helpers).
+  // findLiveApiToken is a lookup by secret (like a session) that yields the scope;
+  // touchApiToken stamps last-used on a key that lookup already returned.
   const UNSCOPED = new Set([
     "findHouseholdIdForUser",
     "createHouseholdForUser",
@@ -510,6 +549,8 @@ describe("household isolation", () => {
     "assertOwned",
     "isUuid",
     "databaseReachable",
+    "findLiveApiToken",
+    "touchApiToken",
   ]);
 
   it("a cross-household read or write through every repository function touches nothing", async () => {

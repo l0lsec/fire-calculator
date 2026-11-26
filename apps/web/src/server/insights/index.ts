@@ -18,6 +18,7 @@ import {
   buildAlerts,
   categoryName,
   detectRecurring,
+  forecastCash,
   monthlyAverages,
   type RecurringSeries,
 } from "@fire/spending";
@@ -66,8 +67,27 @@ export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
     averages,
   });
 
+  // Safe to spend: the next 30 days of each cash account, with the low-balance level as the cushion.
+  const cash = forecastCash({
+    asOf,
+    accounts: accounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      mask: a.mask,
+      type: a.type,
+      subtype: a.subtype,
+      business: a.business,
+      balanceCents: a.availableCents ?? a.currentCents,
+    })),
+    classified: current.classified,
+    pending: current.pending,
+    cushionCents: settings.lowBalanceCents,
+    hiddenMerchants: new Set(hidden.map((h) => h.key.split("|")[0] as string)),
+  });
+
   const alertsAll = buildAlerts({
     asOf,
+    cash,
     recurring: visible,
     budgets,
     classified: current.classified,
@@ -112,6 +132,7 @@ export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
       billMonthlyCents: sum(bills),
     },
     budgets,
+    cash,
     week: { spentCents: last7, previousCents: prev7 },
     alerts: alertsAll.filter((a) => !dismissed.has(a.key)),
     unnotified: (alerts: Alert[]) => alerts.filter((a) => !notified.has(a.key)),
@@ -205,4 +226,24 @@ export async function saveAlertSettings(ctx: Ctx, input: Record<string, string>)
     weeklySummary: v.weeklySummary,
   });
   return { ok: true };
+}
+
+const CushionForm = z.object({ cushion: dollars({ min: 0, max: 1_000_000 }) });
+
+/** The cushion Safe to spend keeps back; it is also the low-balance alert level. */
+export async function saveCushion(
+  ctx: Ctx,
+  input: Record<string, string>,
+): Promise<ActionResult<{ message: string }>> {
+  const parsed = parseForm(CushionForm, input);
+  if ("result" in parsed) return parsed.result as ActionResult<{ message: string }>;
+  const cents = parsed.data.cushion as number;
+  await setAlertSettings(ctx.db, ctx.scope, { lowBalanceCents: cents });
+  const { cash } = await loadInsights(ctx);
+  const safe = cash.spendable?.safeToSpendCents ?? 0;
+  const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return {
+    ok: true,
+    data: { message: `Cushion set to ${usd(cents)}. Safe to spend is now ${usd(safe)}.` },
+  };
 }

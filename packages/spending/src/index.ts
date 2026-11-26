@@ -133,6 +133,8 @@ export interface AnnualSpending {
   reviewQueue: { transactionId: string; flag: Flag; amountCents: number; name: string; date: string }[];
   warnings: string[];
   classified: Classified[];
+  /** Pending transactions (not classified): a cash forecast must not count them twice. */
+  pending: SpendingTx[];
 }
 
 // ---------- defaults ----------
@@ -599,6 +601,7 @@ export function deriveSpending(input: SpendingInput): AnnualSpending {
       .sort((a, b) => Math.abs(b.amountCents) - Math.abs(a.amountCents)),
     warnings,
     classified,
+    pending: input.transactions.filter((t) => t.pending),
   };
 }
 
@@ -625,4 +628,5 @@ export function escrowFromPayment(opts: {
 
 export * from "./alerts";
 export * from "./budgets";
+export * from "./cashflow";
 export * from "./recurring";

@@ -36,6 +36,13 @@
       "when": 1795710998642,
       "tag": "0004_business_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795713629280,
+      "tag": "0005_api_tokens",
+      "breakpoints": true
     }
   ]
 }

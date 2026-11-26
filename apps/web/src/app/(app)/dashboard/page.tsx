@@ -101,6 +101,38 @@ export default async function DashboardPage({
       !(i.code === "unknown-apr" && i.ref && debtsById.has(i.ref)) && !(nextStep && SETUP_CODES.has(i.code)),
   );
 
+  // Safe to spend: the day-to-day question, shown above the long-range plan.
+  const sp = insights.cash.spendable;
+  const shortNow = insights.cash.accounts.some((f) => f.role === "spending" && f.shortfall);
+  const shortDay = (iso: string) =>
+    new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const safeCard = sp ? (
+    <Card
+      title="Safe to spend"
+      action={
+        <Link href="/safe-to-spend" className="text-sm text-accent underline">
+          See the forecast
+        </Link>
+      }
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2" data-testid="dashboard-safe">
+        <p className="text-sm text-ink-3">
+          {sp.nextPayday ? `Until ${shortDay(sp.nextPayday.date)}` : "Next 30 days"}:{" "}
+          <span className={`num text-2xl font-semibold ${sp.safeToSpendCents > 0 ? "text-ink" : "text-bad"}`}>
+            {usdCents(sp.safeToSpendCents)}
+          </span>
+        </p>
+        <p className={`text-sm ${shortNow ? "text-bad" : "text-ink-3"}`}>
+          {shortNow
+            ? "An account is set to go negative before money comes in."
+            : sp.safeToSpendCents > 0
+              ? `About ${usdCents(sp.perDayCents)} a day after bills and your cushion.`
+              : "Bills take everything until money comes in."}
+        </p>
+      </div>
+    </Card>
+  ) : null;
+
   const alertsCard = topAlerts.length ? (
     <Card
       title={`Alerts (${insights.alerts.length})`}
@@ -207,6 +239,7 @@ export default async function DashboardPage({
         </Card>
       ) : null}
 
+      {h ? null : safeCard}
       {h ? null : alertsCard}
 
       {h ? (
@@ -269,6 +302,7 @@ export default async function DashboardPage({
             />
           ) : null}
 
+          {safeCard}
           {alertsCard}
 
           {m.warnings

@@ -485,6 +485,42 @@ export const auditTombstones = fire.table("audit_tombstones", {
   updatedAt: updatedAt(),
 });
 
+/**
+ * Personal access keys that let an AI assistant (Claude, ChatGPT, Codex, any MCP
+ * client) read the plan, and with "write" access make a few reversible changes.
+ * Only the SHA-256 of the secret is stored; the secret is shown once at creation.
+ * A key is minted from an MFA session, so it carries that second factor.
+ */
+export const apiTokens = fire.table(
+  "api_tokens",
+  {
+    id: id(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    /** The Supabase user who created it; the key stops working if they leave the household. */
+    userId: uuid("user_id").notNull(),
+    name: text("name").notNull(),
+    /** "read" or "write". */
+    access: text("access").notNull().default("read"),
+    /** Hex SHA-256 of the full secret. */
+    tokenHash: text("token_hash").notNull(),
+    /** First characters of the secret, safe to show ("fire_ab12cd"). */
+    prefix: text("prefix").notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    /** The client name the last MCP session announced (e.g. "claude-ai"). */
+    lastClient: text("last_client"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("api_tokens_hash_uq").on(t.tokenHash),
+    index("api_tokens_household_idx").on(t.householdId),
+  ],
+);
+
 /** Every table that holds household data, for isolation and purge checks. */
 export const HOUSEHOLD_TABLES = {
   householdMembers,
@@ -506,4 +542,5 @@ export const HOUSEHOLD_TABLES = {
   budgets,
   alertState,
   alertSettings,
+  apiTokens,
 } as const;
