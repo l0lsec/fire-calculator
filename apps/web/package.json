@@ -5,9 +5,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3100",
+    "dev": "next dev --port 3100 --hostname 127.0.0.1",
     "build": "next build",
-    "start": "next start --port 3100",
+    "start": "next start --port 3100 --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:worker": "node scripts/build-worker.mjs",
     "deploy": "node scripts/build-worker.mjs --production && wrangler deploy"
