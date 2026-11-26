@@ -10,7 +10,7 @@ import { exchangePublicToken } from "../src/server/plaid/link";
 import { syncItem } from "../src/server/plaid/sync";
 import { saveSpending } from "../src/server/profile";
 import { planForScenario } from "../src/server/snapshot";
-import { decide, setCategoryEssential, useMeasuredSpending } from "../src/server/spending";
+import { decide, setCategoryEssential, undoDecision, useMeasuredSpending } from "../src/server/spending";
 
 let t: TestDb;
 let deps: PlaidDeps;
@@ -56,7 +56,11 @@ describe("spending review", () => {
       ),
     ).toBe(true);
 
-    expect(await decide(ctx, { decision: "one-time", transactionId: furniture.id })).toEqual({ ok: true });
+    const decided = await decide(ctx, { decision: "one-time", transactionId: furniture.id });
+    expect(decided).toMatchObject({
+      ok: true,
+      data: { message: expect.stringContaining("one-time"), undo: { transactionId: furniture.id, had: "0" } },
+    });
     const after = await planForScenario(ctx, null, FIXTURE_AS_OF);
     expect(after.data.derivedSpending!.livingCents).toBe(before.data.derivedSpending!.livingCents - 420_000);
     expect(after.input!.spending.currentAnnual).toBe(before.input!.spending.currentAnnual - 4200);
@@ -67,13 +71,37 @@ describe("spending review", () => {
     expect(after.data.derivedSpending!.reviewQueue.some((r) => r.transactionId === furniture.id)).toBe(false);
 
     // Amortizing instead counts a quarter of it.
-    expect(await decide(ctx, { decision: "amortize", years: "4", transactionId: furniture.id })).toEqual({
-      ok: true,
-    });
+    const spread = await decide(ctx, { decision: "amortize", years: "4", transactionId: furniture.id });
+    expect(spread).toMatchObject({ ok: true, data: { undo: { had: "1", oneTime: "true" } } });
     const amortized = await planForScenario(ctx, null, FIXTURE_AS_OF);
     expect(amortized.data.derivedSpending!.livingCents).toBe(
       before.data.derivedSpending!.livingCents - 420_000 + 105_000,
     );
+
+    // Undo puts back exactly what was there: one-time, then no decision at all.
+    const undo = (r: typeof spread) => (r.ok ? (r.data?.undo ?? {}) : {});
+    expect(await undoDecision(ctx, undo(spread))).toEqual({ ok: true });
+    const oneTimeAgain = await planForScenario(ctx, null, FIXTURE_AS_OF);
+    expect(oneTimeAgain.data.derivedSpending!.livingCents).toBe(
+      before.data.derivedSpending!.livingCents - 420_000,
+    );
+    expect(await undoDecision(ctx, undo(decided))).toEqual({ ok: true });
+    const restored = await planForScenario(ctx, null, FIXTURE_AS_OF);
+    expect(restored.data.derivedSpending!.livingCents).toBe(before.data.derivedSpending!.livingCents);
+    expect(restored.data.derivedSpending!.reviewQueue.some((r) => r.transactionId === furniture.id)).toBe(
+      true,
+    );
+    // A forged undo for another household's transaction changes nothing.
+    expect(
+      await undoDecision(ctx, {
+        had: "1",
+        transactionId: crypto.randomUUID(),
+        class: "",
+        essential: "",
+        oneTime: "true",
+        amortizeYears: "",
+      }),
+    ).toMatchObject({ ok: false });
   });
 
   it("category rules and decisions are validated and scoped", async () => {
@@ -85,7 +113,13 @@ describe("spending review", () => {
       await decide(ctx, { decision: "amortize", years: "1", transactionId: crypto.randomUUID() }),
     ).toMatchObject({ ok: false });
     expect(await setCategoryEssential(ctx, "drop table", true)).toMatchObject({ ok: false });
-    expect(await setCategoryEssential(ctx, "FOOD_AND_DRINK_RESTAURANT", true)).toEqual({ ok: true });
+    expect(await setCategoryEssential(ctx, "FOOD_AND_DRINK_RESTAURANT", true)).toMatchObject({
+      ok: true,
+      data: {
+        message: expect.stringContaining("essential"),
+        undo: { category: "FOOD_AND_DRINK_RESTAURANT" },
+      },
+    });
   });
 
   it("connected accounts measure spending without being asked, until the user enters their own estimate", async () => {

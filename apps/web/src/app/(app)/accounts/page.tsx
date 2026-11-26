@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
-import { Card } from "@/components/ui";
+import { ButtonLink, Card } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
 import { accountsForDisplay } from "@/server/accounts";
@@ -32,12 +32,7 @@ export default async function AccountsPage() {
             page.
           </p>
         </div>
-        <Link
-          href="/connections"
-          className="rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2"
-        >
-          Connect a bank
-        </Link>
+        <ButtonLink href="/connect">Connect a bank</ButtonLink>
       </div>
 
       {BUCKETS.map((bucket) => {
@@ -64,14 +59,19 @@ export default async function AccountsPage() {
                         <ButtonForm
                           action={deleteAccountAction}
                           label="Delete"
-                          confirm={`Delete ${a.name}?`}
+                          confirm={{
+                            title: `Delete ${a.name}?`,
+                            body: "Its balance leaves your net worth and plan, and its history is removed. This cannot be undone.",
+                          }}
                           hidden={{ id: a.id }}
                         />
                       ) : null}
                     </div>
                   </div>
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-xs text-accent">Edit</summary>
+                    <summary className="flex min-h-10 cursor-pointer items-center text-sm text-accent pointer-coarse:min-h-11">
+                      Edit
+                    </summary>
                     <div className="mt-3">
                       <AccountForm
                         v={{

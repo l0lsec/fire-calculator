@@ -58,7 +58,7 @@ test("disconnect a bank through the UI", async ({ page, context, baseURL }) => {
   });
   await page.goto("/connections");
   await expect(page.getByTestId("item-status")).toHaveText("Connected");
-  page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Disconnect" }).click();
+  await page.getByTestId("confirm-dialog-confirm").click();
   await expect(page.getByText("No banks connected.")).toBeVisible();
 });

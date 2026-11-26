@@ -1,21 +1,26 @@
 import Link from "next/link";
 import { ProjectionChart } from "@/components/charts/projection-chart";
-import { Card, Disclaimer, Notice } from "@/components/ui";
+import { ProgressBar, StepList } from "@/components/steps";
+import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
+import { ALERT_HREF } from "@/lib/alert-links";
 import { requireContext } from "@/lib/auth/context";
 import { age, duration, pct, usd, usdCents } from "@/lib/format";
 import { dashboardModel, type LadderRow } from "@/server/dashboard";
 import { DEBT_KIND_LABELS } from "@/server/debts";
 import { loadInsights } from "@/server/insights";
+import { setupSteps } from "@/server/setup";
 import { planForScenario } from "@/server/snapshot";
 import { RateEntry, type RateNeeded } from "./rate-entry";
 
 export const metadata = { title: "Dashboard | FIRE Planner" };
 
 const FIX: Record<string, { href: string; label: string }> = {
-  "no-people": { href: "/plan", label: "Add birth month" },
-  "no-spending": { href: "/plan", label: "Enter spending" },
+  "no-people": { href: "/setup?step=people", label: "Add birth month" },
+  "no-spending": { href: "/setup?step=spending", label: "Enter spending" },
   invalid: { href: "/plan", label: "Review plan" },
 };
+// Covered by the setup checklist, so not listed twice.
+const SETUP_CODES = new Set(["no-people", "no-spending"]);
 
 function Ladder({ rows }: { rows: LadderRow[] }) {
   return (
@@ -82,7 +87,43 @@ export default async function DashboardPage({
       ? [{ id: d.id, name: d.name, detail: `${DEBT_KIND_LABELS[d.kind]} · ${usdCents(d.balanceCents)} owed` }]
       : [];
   });
-  const otherIssues = m.issues.filter((i) => !(i.code === "unknown-apr" && i.ref && debtsById.has(i.ref)));
+  const steps = setupSteps(plan.data);
+  const stepsDone = steps.filter((st) => st.done).length;
+  const nextStep = steps.find((st) => !st.done);
+  const otherIssues = m.issues.filter(
+    (i) =>
+      !(i.code === "unknown-apr" && i.ref && debtsById.has(i.ref)) && !(nextStep && SETUP_CODES.has(i.code)),
+  );
+
+  const alertsCard = topAlerts.length ? (
+    <Card
+      title={`Alerts (${insights.alerts.length})`}
+      action={
+        <Link href="/alerts" className="text-sm text-accent underline">
+          See all
+        </Link>
+      }
+    >
+      <ul className="flex flex-col gap-2" data-testid="dashboard-alerts">
+        {topAlerts.map((a) => (
+          <li key={a.key}>
+            <Notice tone={a.severity}>
+              <span className="font-medium">
+                {ALERT_HREF[a.kind] ? (
+                  <Link href={ALERT_HREF[a.kind]!} className="underline">
+                    {a.title}
+                  </Link>
+                ) : (
+                  a.title
+                )}
+              </span>{" "}
+              <span className="text-xs opacity-80">{a.detail}</span>
+            </Notice>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  ) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,38 +139,38 @@ export default async function DashboardPage({
             </li>
           ))}
           <li>
-            <Link href="/plan" className="rounded-full px-2.5 py-1 text-xs text-accent underline">
-              Edit
+            <Link
+              href="/plan"
+              className="flex min-h-10 items-center rounded-full px-3 text-xs text-accent underline pointer-coarse:min-h-11"
+            >
+              Edit assumptions
             </Link>
           </li>
         </ul>
       </div>
 
-      {topAlerts.length ? (
-        <Card
-          title={`Alerts (${insights.alerts.length})`}
-          action={
-            <Link href="/alerts" className="text-sm text-accent underline">
-              See all
-            </Link>
-          }
-        >
-          <ul className="flex flex-col gap-2" data-testid="dashboard-alerts">
-            {topAlerts.map((a) => (
-              <li key={a.key}>
-                <Notice tone={a.severity}>
-                  <span className="font-medium">{a.title}</span>{" "}
-                  <span className="text-xs opacity-80">{a.detail}</span>
-                </Notice>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
-      {m.issues.length ? (
-        <Card title={m.ready ? "Finish your plan" : "Let's set up your plan"}>
-          <div className="flex flex-col gap-4">
+      {nextStep || ratesNeeded.length || otherIssues.length ? (
+        <Card title={nextStep || !m.ready ? "Let's set up your plan" : "Finish your plan"}>
+          <div className="flex flex-col gap-4" data-testid="setup-card">
+            {nextStep ? (
+              <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <div className="flex flex-col gap-3">
+                  <ProgressBar done={stepsDone} total={steps.length} label="Setup" />
+                  <StepList
+                    steps={steps.map((st) => ({
+                      n: st.n,
+                      title: st.title,
+                      done: st.done,
+                      current: st.id === nextStep.id,
+                      href: `/setup?step=${st.id}`,
+                    }))}
+                  />
+                </div>
+                <ButtonLink href="/setup" variant="primary">
+                  {stepsDone ? "Continue setup" : "Start setup"}
+                </ButtonLink>
+              </div>
+            ) : null}
             {otherIssues.length ? (
               <ul className="flex flex-col gap-2">
                 {otherIssues.map((i) => {
@@ -140,9 +181,7 @@ export default async function DashboardPage({
                       className="flex flex-wrap items-center justify-between gap-2 text-sm"
                     >
                       <span>{i.message}</span>
-                      <Link className="text-accent underline" href={fix.href}>
-                        {fix.label}
-                      </Link>
+                      <ButtonLink href={fix.href}>{fix.label}</ButtonLink>
                     </li>
                   );
                 })}
@@ -161,6 +200,8 @@ export default async function DashboardPage({
           </div>
         </Card>
       ) : null}
+
+      {h ? null : alertsCard}
 
       {h ? (
         <>
@@ -203,6 +244,8 @@ export default async function DashboardPage({
               </p>
             </Card>
           </div>
+
+          {alertsCard}
 
           {m.warnings
             .filter((w) => !(m.access && w.code === "fi-before-59-5-traditional-heavy"))

@@ -1,6 +1,8 @@
 import { ButtonForm } from "@/components/action-form";
 import { Card, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
+import { explainError } from "@/lib/explain-error";
+import { dateText, dateTimeText } from "@/lib/format";
 import { iphoneStatus } from "@/server/financekit";
 import { plaidConfigured } from "@/server/plaid/config";
 import { itemsForDisplay } from "@/server/plaid/items";
@@ -45,10 +47,10 @@ export default async function ConnectionsPage() {
                 {i.statusText}
               </span>
               {i.lastSyncedAt ? (
-                <span className="text-ink-3"> · last updated {i.lastSyncedAt.slice(0, 10)}</span>
+                <span className="text-ink-3"> · last updated {dateTimeText(i.lastSyncedAt)}</span>
               ) : null}
               {i.consentExpiresAt ? (
-                <span className="text-warn"> · access expires {i.consentExpiresAt.slice(0, 10)}</span>
+                <span className="text-warn"> · access expires {dateText(i.consentExpiresAt)}</span>
               ) : null}
             </p>
             {i.needsUpdate ? (
@@ -72,6 +74,7 @@ export default async function ConnectionsPage() {
               <ButtonForm
                 action={refreshItemAction}
                 label="Refresh now"
+                pendingLabel="Refreshing..."
                 variant="secondary"
                 hidden={{ itemId: i.id }}
               />
@@ -79,7 +82,10 @@ export default async function ConnectionsPage() {
                 action={disconnectAction}
                 label="Disconnect"
                 variant="ghost"
-                confirm={`Disconnect ${i.institution}? Its accounts stay in your history but stop updating.`}
+                confirm={{
+                  title: `Disconnect ${i.institution}?`,
+                  body: "Its accounts stay in your history but stop updating. To get them back you connect the bank again.",
+                }}
                 hidden={{ itemId: i.id }}
               />
             </div>
@@ -108,19 +114,29 @@ export default async function ConnectionsPage() {
                 {iphone.lastSnapshotAt ? (
                   <span className="text-ink-3">
                     {" "}
-                    · last data from phone {iphone.lastSnapshotAt.slice(0, 16).replace("T", " ")} UTC
+                    · last data from phone {dateTimeText(iphone.lastSnapshotAt)}
                   </span>
                 ) : null}
               </p>
-              {iphone.lastError ? <Notice tone="bad">{iphone.lastError}</Notice> : null}
+              {iphone.lastError ? (
+                <Notice tone="bad">{explainError(iphone.lastError, "iphone")}</Notice>
+              ) : null}
               <p className="text-ink-3">{iphone.accounts.join(", ") || "No accounts yet"}</p>
               <div className="flex flex-wrap items-center gap-2">
-                <ButtonForm action={importIphoneAction} label="Check for new data" variant="secondary" />
+                <ButtonForm
+                  action={importIphoneAction}
+                  label="Check for new data"
+                  pendingLabel="Checking..."
+                  variant="secondary"
+                />
                 <ButtonForm
                   action={unpairIphoneAction}
                   label="Unpair"
                   variant="ghost"
-                  confirm="Unpair the iPhone? Its accounts stay in your history but stop updating."
+                  confirm={{
+                    title: "Unpair the iPhone?",
+                    body: "Its accounts stay in your history but stop updating. To sync again you pair it with a new code.",
+                  }}
                 />
               </div>
             </>

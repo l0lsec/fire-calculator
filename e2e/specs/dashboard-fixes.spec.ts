@@ -49,6 +49,7 @@ test("connected accounts set spending, and a missing rate is typed right on the 
   await page.keyboard.type("lots");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("alert").filter({ hasText: /percentage/ })).toBeVisible();
+  await expect(boxes.first()).toHaveValue("lots");
 
   // Type, Enter, and focus moves to the next box.
   await boxes.first().fill("19.5");

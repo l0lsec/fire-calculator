@@ -3,7 +3,8 @@
 // texts to a list of problems; the CLI runs it on the real files and prints the mode's
 // success-only token last. `control` proves every mode can fail on a broken fixture.
 //
-//   node scripts/verify/ux-check.mjs <principles|claude-md|global|plan|survey|control|no-emdash>
+//   node scripts/verify/ux-check.mjs <principles|claude-md|global|plan|survey|control|no-emdash|ratchet|suites>
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
@@ -135,7 +136,9 @@ export function checkPlan(plan, ledgers, uiFiles) {
     }
   }
   // every UI file has an owner in phase 1 or a phase-3 leaf
-  const owners = [...leafFiles, "phase-1-shared.md"].flatMap((n) => (ledgers[n] ? ownsOf(ledgers[n]) : []));
+  const owners = [...leafFiles, "phase-1-shared.md", "phase-4-flows.md"].flatMap((n) =>
+    ledgers[n] ? ownsOf(ledgers[n]) : [],
+  );
   for (const f of uiFiles) {
     if (!owners.some((g) => covers(g, f))) problems.push(`no phase owns ${f}`);
   }
@@ -212,11 +215,15 @@ function ledgers() {
   );
 }
 
-function surveyFiles() {
-  return [
-    ...walk(join(ROOT, "apps/web/src/app"), (p) => p.endsWith(".tsx")),
-    ...walk(join(ROOT, "apps/web/src/components"), (p) => p.endsWith(".tsx")),
-  ].map((p) => ({ path: rel(p), text: read(p) }));
+// The survey describes the app before the rollout, so it is measured at the
+// commit the plan names, not at the working tree (which the rollout changes).
+const SURVEY_REV = "4328e00";
+function surveyFiles(rev = SURVEY_REV) {
+  const git = (...a) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 26 });
+  return git("ls-tree", "-r", "--name-only", rev, "apps/web/src/app", "apps/web/src/components")
+    .split("\n")
+    .filter((p) => p.endsWith(".tsx"))
+    .map((p) => ({ path: p, text: git("show", `${rev}:${p}`) }));
 }
 
 function phase0Files() {
@@ -247,7 +254,54 @@ const MODES = {
   ],
   "no-emdash": [() => checkNoEmdash(phase0Files()), "UX_NO_EMDASH_OK"],
   control: [controlProblems, "UX_CONTROL_OK"],
+  ratchet: [ratchetProblems, "UX_RATCHET_OK"],
+  suites: [suiteProblems, "UX_SUITES_OK"],
 };
+
+/** Phase 2 G3: the UX guard fails above and below its baseline and passes at it. */
+async function ratchetProblems() {
+  const ux = await import("../guards/ux.mjs");
+  const problems = [];
+  const path = "apps/web/src/app/(app)/fx/page.tsx";
+  const two = { path, text: 'window.confirm("a");\nwindow.confirm("b");\n' };
+  const at = { "browser-dialog": { [path]: 2 } };
+  if (ux.check([two], at).length) problems.push("at baseline: reported a violation");
+  const above = ux.check([two], { "browser-dialog": { [path]: 1 } });
+  if (!above.some((v) => v.includes("adds browser-dialog debt")))
+    problems.push("above baseline: not reported");
+  else console.log(`above baseline: ${above[0]}`);
+  const below = ux.check([{ path, text: 'window.confirm("a");\n' }], at);
+  if (!below.some((v) => v.includes("lower the baseline"))) problems.push("below baseline: not reported");
+  else console.log(`below baseline: ${below[0]}`);
+  const gone = ux.check([{ path: "package.json", text: "{}" }], at);
+  if (!gone.some((v) => v.includes("is gone"))) problems.push("stale baseline entry: not reported");
+  // The real tree must be exactly at its baseline.
+  const { repoFiles } = await import("../guards/lib.mjs");
+  const real = ux.scan(repoFiles());
+  if (real.length) problems.push(...real.map((v) => `repo: ${v}`));
+  return problems;
+}
+
+/** Phase 5 G2: lint, typecheck, unit tests and guards all pass. */
+function suiteProblems() {
+  const problems = [];
+  for (const [cmd, ...args] of [
+    ["pnpm", "lint"],
+    ["pnpm", "typecheck"],
+    ["pnpm", "test"],
+    ["pnpm", "guards"],
+    ["pnpm", "guards:selftest"],
+  ]) {
+    try {
+      execFileSync(cmd, args, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 1 << 26 });
+      console.log(`ok: ${cmd} ${args.join(" ")}`);
+    } catch (e) {
+      const out = `${e.stdout ?? ""}${e.stderr ?? ""}`.split("\n").slice(-15).join("\n");
+      problems.push(`${cmd} ${args.join(" ")} failed:\n${out}`);
+    }
+  }
+  return problems;
+}
 
 /** Each check must report at least one problem on a fixture broken in one known way. */
 function controlProblems() {
@@ -283,13 +337,11 @@ function controlProblems() {
 
 const mode = process.argv[2];
 if (!MODES[mode]) {
-  console.error(
-    `usage: ux-check.mjs <${Object.keys(MODES).join("|")}>  (ratchet and suites ship in phases 2 and 5)`,
-  );
+  console.error(`usage: ux-check.mjs <${Object.keys(MODES).join("|")}>`);
   process.exit(1);
 }
 const [run, token] = MODES[mode];
-const problems = run();
+const problems = await run();
 if (problems.length) {
   for (const p of problems) console.error(`UX CHECK FAIL (${mode}): ${p}`);
   process.exit(1);

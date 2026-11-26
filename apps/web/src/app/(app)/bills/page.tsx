@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
 import { Card, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
-import { usdCents } from "@/lib/format";
+import { dateText, usdCents } from "@/lib/format";
 import { categoryName, loadInsights } from "@/server/insights";
 import { hideRecurringAction } from "./actions";
 
@@ -38,7 +38,7 @@ function Row({ s, hidden = false }: { s: RecurringSeries; hidden?: boolean }) {
         <p className="text-xs text-ink-3">
           {s.variable ? "about " : ""}
           {usdCents(expectedCents(s), { cents: true })} {CADENCE[s.cadence]} · {categoryName(s.primary)} ·{" "}
-          {s.active ? `next ${s.nextDate}` : `last ${s.lastDate}`}
+          {s.active ? `next ${dateText(s.nextDate)}` : `last ${dateText(s.lastDate)}`}
           {s.confidence === "likely" ? " · seen twice so far" : ""}
         </p>
       </div>
@@ -47,6 +47,7 @@ function Row({ s, hidden = false }: { s: RecurringSeries; hidden?: boolean }) {
         <ButtonForm
           action={hideRecurringAction}
           label={hidden ? "Show" : "Not recurring"}
+          undo={hideRecurringAction}
           hidden={{ key: s.key, hide: hidden ? "false" : "true" }}
         />
       </div>
@@ -84,11 +85,10 @@ export default async function BillsPage() {
       </div>
       {!connected ? (
         <Notice>
-          Connect a bank on the{" "}
-          <Link href="/connections" className="underline">
-            Connections
+          <Link href="/connect" className="font-medium underline">
+            Connect a bank
           </Link>{" "}
-          page to find your subscriptions and bills.
+          to find your subscriptions and bills.
         </Notice>
       ) : null}
 
@@ -120,9 +120,9 @@ export default async function BillsPage() {
         ) : (
           <ul className="divide-y divide-line text-sm">
             {r.upcoming.map((s) => (
-              <li key={s.key} className="flex justify-between py-2">
+              <li key={s.key} className="flex justify-between gap-3 py-2">
                 <span>
-                  <span className="tabular-nums text-ink-3">{s.nextDate}</span> {s.name}
+                  <span className="tabular-nums text-ink-3">{dateText(s.nextDate)}</span> {s.name}
                 </span>
                 <span className="tabular-nums">
                   {s.variable ? "about " : ""}

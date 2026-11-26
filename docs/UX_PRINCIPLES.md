@@ -9,24 +9,39 @@ Your goal is to minimize confusion, reduce effort, prevent mistakes, and help th
 When laws conflict, prioritize clarity, accessibility, user control and task completion. Do not apply them
 mechanically. In a money app the tiebreak leans one way: a number the user can trust beats a faster screen.
 
-## Status of the shared pieces (update this section when they ship)
+## Status of the shared pieces (update this section when they change)
 
-The shared pieces in rollout Phase 1 are **PLANNED, not built**: `ConfirmDialog`, `useToast` with Undo,
-`explainError`, 44 px coarse-pointer targets in `ButtonForm`, and a grouped nav. Until they exist:
+The rollout Phase 1 pieces **have shipped** (branch `claude/ux-design-principles-4482fd`). Use them; do not
+write your own:
 
-- do not add a new `window.confirm(` call; pass `confirm=` to `ButtonForm` (one place to replace later), and
-  only for an action that cannot be undone or stops something working (disconnect, unpair, delete);
-- do not write your own toast, dialog, or pending-button helper; use `ActionForm`, `ButtonForm`, `Notice`;
-- never show a raw `error.message` (Supabase, Plaid, FinanceKit) to the user; write what happened and what to do;
-- do not add a top-level nav entry to `NAV` in `app/(app)/layout.tsx` without asking the owner (10 already);
-- keep every `data-testid` the e2e specs use; rename one only together with its spec.
+| Need | Use | Notes |
+|---|---|---|
+| A form that saves | `ActionForm` (`components/action-form.tsx`) | keeps typed values when a save fails, focuses the first bad field, shows `pendingLabel`, shows the action's `data.message` (or `successMessage`) when done |
+| A row action, toggle or delete | `ButtonForm` | 40 px (44 px on touch), spinner and `aria-busy` while pending, `doneMessage` or the action's `data.message` as a toast |
+| A confirmation | `ButtonForm confirm={{ title, body }}` or `ConfirmDialog` (`components/confirm-dialog.tsx`) | only for actions that cannot be undone or stop something working; title names the thing, body the consequence; focus starts on Cancel |
+| Undo | return `data.undo` (form fields) from the action and pass `undo={reverseAction}` to `ButtonForm` | only where the change is really reversible (spending decisions, category toggles, alert dismiss, "Not recurring"); hard deletes get a confirmation, never a fake Undo |
+| A status message | `useToast()` (`components/toast.tsx`) | one polite region in the app layout |
+| A provider error on screen | `explainError(e, source)` (`lib/explain-error.ts`) | Supabase, Plaid, iPhone sync and network errors in plain words; never the raw message |
+| How a save moved the FI date | `withFiEffect(ctx, base, change)` (`server/plan-effect.ts`) | appends "FI date moved 4 mo earlier: Mar 2041 to Nov 2040." to `data.message` |
+| A link that is a call to action | `ButtonLink` (`components/ui.tsx`) | same sizes and variants as `Button` |
+| Progress | `ProgressBar`, `StepList` (`components/steps.tsx`) | "2 of 4 done", numbered steps with done marks |
+| Dates on screen | `dateText`, `dateTimeText` (`lib/format.ts`) | local time, never UTC or ISO strings |
+
+Navigation (`components/app-nav.tsx`) has seven places: Dashboard, Plan, Debts, Spending (tabs Review, Budgets,
+Bills), Scenarios, History, Accounts (tabs Accounts, Connections). Alerts sits in the header. Phones get a menu.
+Add a page as a tab of an existing place; a new top-level place needs the owner's yes.
+
+`pnpm guards` now includes a UX ratchet (`scripts/guards/ux.mjs`, baseline `scripts/guards/ux-baseline.json`, at
+zero): browser dialogs, raw provider errors, controls under 40 px, colors outside the tokens, `<button>` without
+`type`, and `<img>` without `alt` all fail CI. Keep every `data-testid` the e2e specs use; rename one only
+together with its spec (`node scripts/verify/ux-pages.mjs 3a-dashboard --regressions` checks them all).
 
 ## Checklist: what each law means here
 
 Check each item against what you are about to ship.
 
 1. **Hick (choices):** one question per page (Dashboard: "when am I free?"; Debts: "what do I pay next?"; Spending: "is this number right?"). Hide low-priority options; split big decisions into steps; recommend one option and say why (for example the avalanche order, or "Use as my retirement baseline").
-2. **Fitts (size):** every control is at least 40 px tall (`Button` uses `min-h-10`), 44 px on a coarse pointer. `ButtonForm` at `min-h-8` (32 px) is known debt, not a pattern to copy. No icon-only target; a checkbox's label is part of its target.
+2. **Fitts (size):** every control is at least 40 px tall (`Button` uses `min-h-10`), 44 px on a coarse pointer. No icon-only target; a checkbox's label is part of its target.
 3. **Jakob (familiar):** top nav for sections, account and Sign out at the right, settings-like pages (Connections) reachable from the nav, native inputs (`type="month"`, `inputMode="decimal"`), money laid out the way a bank app does.
 4. **Proximity:** label, hint and error sit together in `Field`; a row's Remove sits in that row; groups are separated with spacing (`gap-*`), not extra borders.
 5. **Miller (chunks):** short `fieldset` groups with a `legend`; long forms become steps or disclosures; never make the user carry a number from another page (show measured spending where the spending field is, as Plan does).
@@ -54,8 +69,8 @@ Check each item against what you are about to ship.
 4. Prevent the error first; if it still happens, keep the user's input and say how to fix it.
 5. Confirm clearly when the goal is done, in terms of the plan.
 6. Keep the `data-testid` attributes and copy the e2e specs depend on, and the "Not financial advice" `Disclaimer`.
-7. Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `node scripts/verify/ux-check.mjs principles`. Once the
-   Phase 2 ratchet ships, `node scripts/verify/ux-check.mjs ratchet` must pass too.
+7. Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm guards` (includes the UX ratchet) and
+   `node scripts/verify/ux-check.mjs principles`.
 
 ---
 

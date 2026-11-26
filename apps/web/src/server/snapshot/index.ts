@@ -257,10 +257,14 @@ export function buildEngineInput(
   try {
     return { input: parseEngineInput(draft), issues };
   } catch (e) {
-    const message =
+    // Plain words for the screen; the field paths say where to look.
+    const fields =
       e instanceof ZodError
-        ? e.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")
-        : (e as Error).message;
+        ? [...new Set(e.issues.map((i) => String(i.path.at(-1) ?? i.path[0] ?? "")).filter(Boolean))]
+        : [];
+    const message = fields.length
+      ? `Some numbers in your plan are out of range (${fields.slice(0, 3).join(", ")}). Open the plan and check them.`
+      : "Your plan could not be calculated. Open the plan and check its numbers.";
     issues.push({ code: "invalid", message });
     return { input: null, issues };
   }

@@ -1,8 +1,8 @@
 # UX rollout plan: the 20 laws across FIRE Planner
 
-Status: Phase 0 done on branch `claude/ux-design-principles-4482fd` (this plan, `docs/UX_PRINCIPLES.md`,
-`CLAUDE.md`, the global pointer, `scripts/verify/ux-check.mjs`). Phases 1 to 5 are planned only; each has a
-ledger in `docs/ux-rollout/gates/`.
+Status: Phases 0 to 5 built on branch `claude/ux-design-principles-4482fd`; each has a ledger in
+`docs/ux-rollout/gates/`, and the "Outcome" section at the end says what was measured. The survey below
+describes the app before the rollout (commit 4328e00) and is re-measured at that commit.
 
 ## What the survey found (measured 2026-11-26 on 4328e00)
 
@@ -165,12 +165,26 @@ Ledger: `gates/phase-5-verify.md`.
 7. Laws conflict (fewer confirmations vs warn before destruction; Hick vs Tesler). Tiebreak: the owner's order
    (clarity, accessibility, user control, task completion), and in a money app the trustworthy number wins.
 
-## Decisions needed from the owner
+## Decisions (taken while building; the owner can reverse any of them)
 
-1. **Nav:** group the 10 links into 7 with Connections reachable (proposed above), or keep the flat list and
-   only add Connections?
-2. **Undo for deletes:** keep hard deletes with a ConfirmDialog (recommended, no migration), or add soft delete
-   so every delete gets Undo (a migration in `supabase/`)?
-3. **One rule for every project:** the global CLAUDE.md now has one section per project (Insights,
-   fire-calculator, and likely loan-serv-app). Replace them with one cross-project rule ("read the project's
-   `docs/UX_PRINCIPLES.md`; if none, the 20 laws in `~/.claude/UX_PRINCIPLES.md`")?
+1. **Nav:** grouped into 7 places as proposed (Dashboard, Plan, Debts, Spending with tabs Review, Budgets and
+   Bills, Scenarios, History, Accounts with tabs Accounts and Connections); Alerts moved to the header. No page
+   was removed and every old URL still works. Reverting is one list in `components/app-nav.tsx`.
+2. **Undo for deletes:** kept hard deletes behind a ConfirmDialog that names the consequence (no migration).
+   Undo ships only where the change is really reversible: spending decisions, essential/discretionary toggles,
+   alert dismiss and "Not recurring".
+3. **One cross-project rule:** not changed. The global CLAUDE.md keeps one section per project, because the
+   Insights and loan-serv-app chats own theirs.
+
+## Outcome (measured on the branch)
+
+- UX ratchet (`scripts/guards/ux.mjs`) over `apps/web/src`: 13 items before (2 browser dialogs, 10 raw provider
+  error messages, 1 undersized button style used by all 23 `ButtonForm`s), 0 after; the baseline is 0, so any
+  new item fails `pnpm guards` and CI.
+- `window.confirm(` call sites: 2 before, 0 after. Nav places: 10 flat before, 7 grouped after, Connections
+  reachable.
+- Found and fixed while building: React 19 reset every `ActionForm` before a failed save could keep its values
+  (proved by running the new test against the old code: it fails); saving Assumptions always failed in "stop
+  when FI is reached" mode because the blank chosen age was read as 0; a raw exception message reached the
+  screen when adding a person or income failed.
+- New e2e specs: `ux-shared`, `ux-pages`, `ux-flows`, `ux-a11y` (axe on every app page at 375 and 1280 px).

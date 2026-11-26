@@ -1,0 +1,11 @@
+{
+  "note": "UX debt per file. Lower it as you fix things; never raise it. See scripts/guards/ux.mjs.",
+  "counts": {
+    "browser-dialog": {},
+    "raw-error": {},
+    "small-target": {},
+    "raw-color": {},
+    "button-type": {},
+    "img-alt": {}
+  }
+}

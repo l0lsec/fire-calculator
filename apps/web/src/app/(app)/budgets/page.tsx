@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
 import { Card, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
-import { usdCents } from "@/lib/format";
+import { dateText, usdCents } from "@/lib/format";
 import { categoryName, loadInsights } from "@/server/insights";
 import { saveBudgetAction, suggestBudgetsAction } from "./actions";
 import { BudgetInput } from "./budget-input";
@@ -34,7 +34,7 @@ export default async function BudgetsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Budgets</h1>
           <p className="text-sm text-ink-3">
-            {month}, as of {asOf}. Spending counts the same transactions as the{" "}
+            {month}, as of {dateText(asOf)}. Spending counts the same transactions as the{" "}
             <Link href="/spending" className="text-accent underline">
               Spending
             </Link>{" "}

@@ -17,6 +17,37 @@ const LABEL: Record<Strategy, string> = {
   minimum: "Minimum payments only",
 };
 
+const SHORT: Record<Strategy, string> = {
+  avalanche: "avalanche",
+  snowball: "snowball",
+  hybrid: "hybrid",
+  custom: "custom order",
+  minimum: "minimums only",
+};
+
+type Results = ReturnType<typeof compareStrategies>["results"];
+
+/** The strategy that repays everything for the least interest, and why, in one sentence. */
+function recommend(results: Results): { strategy: Strategy; reason: string } | null {
+  const options = (["avalanche", "snowball", "hybrid"] as Strategy[]).filter((s) => results[s].paidOff);
+  if (options.length === 0) return null;
+  const pick = options.reduce((a, b) => (results[b].totalInterest < results[a].totalInterest - 0.5 ? b : a));
+  const r = results[pick];
+  const snow = results.snowball;
+  const saved = snow.paidOff ? snow.totalInterest - r.totalInterest : 0;
+  const firstGone = (x: Results[Strategy]) =>
+    x.payoffOrder[0] ? (x.payoffMonth[x.payoffOrder[0]] ?? null) : null;
+  const snowFirst = firstGone(snow);
+  const pickFirst = firstGone(r);
+  let reason =
+    pick === "snowball" || saved < 1
+      ? `Paying the smallest balance first costs no more interest here, and clears a debt soonest.`
+      : `It saves ${usd(saved)} in interest compared with snowball.`;
+  if (pick !== "snowball" && snowFirst !== null && pickFirst !== null && snowFirst < pickFirst)
+    reason += ` Snowball clears your first debt ${pickFirst - snowFirst} months sooner, if quick wins help you stick with it.`;
+  return { strategy: pick, reason };
+}
+
 export function DebtPlanner({
   debts,
   startMonth,
@@ -42,6 +73,7 @@ export function DebtPlanner({
   const result = useMemo(() => simulateDebts(debts, plan, { startMonth }), [debts, plan, startMonth]);
   const comparison = useMemo(() => compareStrategies(debts, plan, { startMonth }), [debts, plan, startMonth]);
   const maxExtra = Math.max(2000, Math.ceil((result.budget * 2) / 100) * 100);
+  const best = recommend(comparison.results);
 
   if (debts.length === 0) return <p className="text-sm text-ink-3">No debts with a known rate to plan.</p>;
 
@@ -72,6 +104,28 @@ export function DebtPlanner({
           <p className="text-xs text-ink-3">minimums plus {usd(extra)} extra</p>
         </div>
       </div>
+
+      {best ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/30 bg-accent-soft p-4 text-sm"
+          data-testid="strategy-recommendation"
+        >
+          <p>
+            <span className="font-semibold">Costs least: {SHORT[best.strategy]}.</span> {best.reason}
+          </p>
+          {best.strategy !== strategy ? (
+            <button
+              type="button"
+              onClick={() => setStrategy(best.strategy)}
+              className="min-h-10 rounded-lg bg-accent px-4 font-medium text-accent-ink hover:opacity-90 pointer-coarse:min-h-11"
+            >
+              Try {SHORT[best.strategy]}
+            </button>
+          ) : (
+            <span className="text-xs font-medium text-accent">Selected</span>
+          )}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5 text-sm">
@@ -109,7 +163,8 @@ export function DebtPlanner({
 
       <PayoffChart result={result} debts={debts} startMonth={startMonth} />
 
-      <div className="overflow-x-auto">
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable table must be reachable by keyboard */}
+      <section className="overflow-x-auto" aria-label="Strategy comparison" tabIndex={0}>
         <table className="w-full min-w-[520px] text-sm">
           <caption className="mb-2 text-left text-sm font-semibold">
             Compare strategies at {usd(extra)} extra a month
@@ -132,7 +187,14 @@ export function DebtPlanner({
                   className={`border-b border-line ${s === strategy ? "font-medium" : ""}`}
                   data-testid={`strategy-row-${s}`}
                 >
-                  <td className="py-2">{LABEL[s]}</td>
+                  <td className="py-2">
+                    {LABEL[s]}
+                    {best?.strategy === s ? (
+                      <span className="ml-2 rounded bg-accent-soft px-1.5 text-xs text-accent">
+                        costs least
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="num py-2" data-testid={`strategy-months-${s}`}>
                     {r.paidOff ? `${r.months} months` : "not repaid"}
                   </td>
@@ -146,10 +208,10 @@ export function DebtPlanner({
           </tbody>
         </table>
         <p className="mt-2 text-xs text-ink-3">
-          Avalanche usually costs least; snowball clears a debt sooner, which some people find easier to stick
-          with. Both are reasonable; this shows the trade-off rather than choosing for you.
+          The cheapest order is marked. Snowball clears a debt sooner, which some people find easier to stick
+          with; the difference in interest is shown so you can choose.
         </p>
-      </div>
+      </section>
 
       <ActionForm
         action={saveDebtPlanAction}

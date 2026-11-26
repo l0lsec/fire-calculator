@@ -5,6 +5,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Button, Field, Input, Notice } from "@/components/ui";
 import { safeNext } from "@/lib/auth/access";
 import { supabaseBrowser } from "@/lib/auth/browser";
+import { explainError } from "@/lib/explain-error";
 
 export function CredentialsForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   const router = useRouter();
@@ -37,7 +38,7 @@ export function CredentialsForm({ mode }: { mode: "sign-in" | "sign-up" }) {
         : await supabase.auth.signUp({ email, password });
     setBusy(false);
     if (res.error) {
-      setError(res.error.message);
+      setError(explainError(res.error, "auth"));
       return;
     }
     if (mode === "sign-up" && !res.data.session) {
@@ -72,9 +73,15 @@ export function CredentialsForm({ mode }: { mode: "sign-in" | "sign-up" }) {
           required
         />
       </Field>
-      {error ? <Notice tone="bad">{error}</Notice> : null}
+      <div aria-live="polite">{error ? <Notice tone="bad">{error}</Notice> : null}</div>
       <Button type="submit" disabled={busy || !ready}>
-        {busy ? "Working..." : mode === "sign-in" ? "Sign in" : "Create account"}
+        {busy
+          ? mode === "sign-in"
+            ? "Signing in..."
+            : "Creating account..."
+          : mode === "sign-in"
+            ? "Sign in"
+            : "Create account"}
       </Button>
       <p className="text-center text-sm text-ink-3">
         {mode === "sign-in" ? (

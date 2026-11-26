@@ -26,7 +26,11 @@ export const metadata = { title: "Plan | FIRE Planner" };
 
 const num = (x: number) => String(Math.round(x * 10000) / 10000);
 const pctIn = (x: number) => num(x * 100);
-const centsIn = (c: number | null | undefined) => (c ? (c / 100).toFixed(2) : "");
+// Money as people type it: "60,000" or "1,234.50" (the parsers accept commas).
+const centsIn = (c: number | null | undefined) =>
+  c
+    ? (c / 100).toLocaleString("en-US", { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })
+    : "";
 const birthLabel = (m: number) => {
   const { year, month } = yearMonth(m);
   return `${year}-${String(month).padStart(2, "0")}`;
@@ -58,7 +62,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         <h1 className="text-2xl font-semibold">Plan</h1>
         <p className="text-sm text-ink-3">
           Editing <span className="font-medium text-ink">{s.name}</span>
-          {s.isBaseline ? " (your baseline)" : ""}. Everything here feeds the dashboard.
+          {s.isBaseline ? " (your baseline)" : ""}. Each save says how it moved your FI date.
         </p>
       </div>
 
@@ -74,7 +78,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                   action={deletePersonAction}
                   label="Remove"
                   hidden={{ id: p.id }}
-                  confirm={`Remove ${p.name}?`}
+                  confirm={{
+                    title: `Remove ${p.name}?`,
+                    body: "Their income and birth month leave the plan, and your FI date is recalculated. This cannot be undone.",
+                  }}
                 />
               ) : null}
             </li>
@@ -123,7 +130,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="num">{usdCents(i.monthlyCents)}/mo</span>
-                  <ButtonForm action={deleteIncomeAction} label="Remove" hidden={{ id: i.id }} />
+                  <ButtonForm
+                    action={deleteIncomeAction}
+                    label="Remove"
+                    hidden={{ id: i.id }}
+                    confirm={{
+                      title: `Remove ${i.name}?`,
+                      body: "This income leaves the plan. This cannot be undone.",
+                    }}
+                  />
                 </span>
               </li>
             ))}
@@ -149,7 +164,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="num">{usdCents(c.monthlyCents)}/mo</span>
-                  <ButtonForm action={deleteContributionAction} label="Remove" hidden={{ id: c.id }} />
+                  <ButtonForm
+                    action={deleteContributionAction}
+                    label="Remove"
+                    hidden={{ id: c.id }}
+                    confirm={{
+                      title: `Remove ${c.name}?`,
+                      body: "This contribution leaves the plan. This cannot be undone.",
+                    }}
+                  />
                 </span>
               </li>
             ))}
@@ -179,6 +202,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                   action={removeAdjustmentAction}
                   label="Remove"
                   hidden={{ scenarioId: s.id, adjustmentId: adj.id }}
+                  confirm={{
+                    title: `Remove ${adj.label}?`,
+                    body: "This line leaves the plan. This cannot be undone.",
+                  }}
                 />
               </span>
             </li>

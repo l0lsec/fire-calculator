@@ -449,6 +449,7 @@ describe("household isolation", () => {
         NotOwnedError,
       ),
     clearOverride: async () => expect(await repos.clearOverride(db, B.scope, A.txId)).toBe(false),
+    getOverride: async () => expect(await repos.getOverride(db, B.scope, A.txId)).toBeNull(),
     listOverrides: async () =>
       expect((await repos.listOverrides(db, B.scope)).every((r) => own(r, B))).toBe(true),
     listCategoryRules: async () =>

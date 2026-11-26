@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { requireContext } from "@/lib/auth/context";
 import { type ActionResult, formObject } from "@/server/forms";
+import { withFiEffect } from "@/server/plan-effect";
 import {
   removeContribution,
   removeIncome,
@@ -18,48 +19,70 @@ const done = (r: ActionResult) => {
   return r;
 };
 
+type Ctx = Awaited<ReturnType<typeof requireContext>>;
+/** Saves, then says how the change moved the FI date. */
+const effect = async (ctx: Ctx, base: string, change: () => Promise<ActionResult>, scenarioId?: string) =>
+  done((await withFiEffect(ctx, base, change, scenarioId)) as ActionResult);
+
 export async function savePersonAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
   const v = formObject(fd);
-  return done(await savePerson(ctx, v, v.id || undefined));
+  return effect(ctx, v.id ? "Saved." : `Added ${v.name || "person"}.`, () =>
+    savePerson(ctx, v, v.id || undefined),
+  );
 }
 export async function deletePersonAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
-  return done(await removePerson(ctx, String(fd.get("id"))));
+  return effect(ctx, "Removed.", () => removePerson(ctx, String(fd.get("id"))));
 }
 export async function saveIncomeAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
   const v = formObject(fd);
-  return done(await saveIncome(ctx, v, v.id || undefined));
+  return effect(ctx, v.id ? "Saved." : `Added ${v.name || "income"}.`, () =>
+    saveIncome(ctx, v, v.id || undefined),
+  );
 }
 export async function deleteIncomeAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
-  return done(await removeIncome(ctx, String(fd.get("id"))));
+  return effect(ctx, "Removed.", () => removeIncome(ctx, String(fd.get("id"))));
 }
 export async function saveContributionAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
   const v = formObject(fd);
-  return done(await saveContribution(ctx, v, v.id || undefined));
+  return effect(ctx, v.id ? "Saved." : `Added ${v.name || "contribution"}.`, () =>
+    saveContribution(ctx, v, v.id || undefined),
+  );
 }
 export async function deleteContributionAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
-  return done(await removeContribution(ctx, String(fd.get("id"))));
+  return effect(ctx, "Removed.", () => removeContribution(ctx, String(fd.get("id"))));
 }
 export async function saveSpendingAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
-  return done(await saveSpending(ctx, formObject(fd)));
+  return effect(ctx, "Saved.", () => saveSpending(ctx, formObject(fd)));
 }
 export async function saveAssumptionsAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
   const v = formObject(fd);
-  return done(await saveAssumptions(ctx, String(v.scenarioId), v));
+  return effect(ctx, "Saved.", () => saveAssumptions(ctx, String(v.scenarioId), v), String(v.scenarioId));
 }
 export async function addAdjustmentAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
   const v = formObject(fd);
-  return done(await addAdjustment(ctx, String(v.scenarioId), v));
+  return effect(
+    ctx,
+    `Added ${v.label || "line"}.`,
+    () => addAdjustment(ctx, String(v.scenarioId), v),
+    String(v.scenarioId),
+  );
 }
 export async function removeAdjustmentAction(_: ActionResult | null, fd: FormData) {
   const ctx = await requireContext();
-  return done(await removeAdjustment(ctx, String(fd.get("scenarioId")), String(fd.get("adjustmentId"))));
+  const scenarioId = String(fd.get("scenarioId"));
+  return effect(
+    ctx,
+    "Removed.",
+    () => removeAdjustment(ctx, scenarioId, String(fd.get("adjustmentId"))),
+    scenarioId,
+  );
 }
