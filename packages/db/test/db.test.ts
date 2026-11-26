@@ -30,7 +30,7 @@ describe("migrations", () => {
     const tables = await t.pg.query<{ tablename: string; rowsecurity: boolean }>(
       "select tablename, rowsecurity from pg_tables where schemaname = 'fire' order by tablename",
     );
-    expect(tables.rows.length).toBe(17);
+    expect(tables.rows.length).toBe(18);
     for (const row of tables.rows) expect(row.rowsecurity).toBe(true);
   });
 });
@@ -49,6 +49,7 @@ interface Seeded {
   incomeId: string;
   contributionId: string;
   itemId: string;
+  fkExternalId: string;
 }
 
 async function seed(tag: string): Promise<Seeded> {
@@ -150,6 +151,25 @@ async function seed(tag: string): Promise<Seeded> {
     bucket: "traditional",
     monthlyCents: 500_00,
   });
+  await repos.saveFinancekitPairing(db, scope, {
+    pairingId: `pid${tag}`.padEnd(16, "0").slice(0, 16),
+    keyCiphertext: `ct-${tag}`,
+    keyIv: `iv-${tag}`,
+    keyVersion: 1,
+  });
+  const fkExternalId = `fk:${crypto.randomUUID()}`;
+  await repos.upsertFinancekitAccount(db, scope, {
+    plaidAccountId: fkExternalId,
+    name: `Apple Card ${tag}`,
+    officialName: null,
+    mask: null,
+    type: "credit",
+    subtype: "credit card",
+    bucket: "excluded",
+    currentCents: 10_00,
+    availableCents: null,
+    isoCurrency: "USD",
+  });
   await repos.recordSyncEvent(db, {
     householdId,
     itemId: item.id,
@@ -169,6 +189,7 @@ async function seed(tag: string): Promise<Seeded> {
     incomeId: income.id,
     contributionId: contribution.id,
     itemId: item.id,
+    fkExternalId,
   };
 }
 
@@ -186,7 +207,46 @@ describe("household isolation", () => {
   // Every scoped repository function, exercised with household B's scope
   // against household A's ids. Reads must return nothing of A's; writes must
   // change nothing of A's (null / false / NotOwnedError).
+  const fkDeviceOfA = async () => (await repos.getFinancekitDevice(db, A.scope))!;
   const probes: Record<string, () => Promise<void>> = {
+    getFinancekitDevice: async () => expect(own(await repos.getFinancekitDevice(db, B.scope), B)).toBe(true),
+    updateFinancekitDevice: async () => {
+      await repos.updateFinancekitDevice(db, B.scope, { lastError: "B only" });
+      expect((await fkDeviceOfA()).lastError).toBeNull();
+    },
+    deleteFinancekitDevice: async () => {
+      await repos.deleteFinancekitDevice(db, B.scope);
+      expect((await fkDeviceOfA()).pairingId).toBe("pidA000000000000");
+    },
+    saveFinancekitPairing: async () => {
+      await repos.saveFinancekitPairing(db, B.scope, {
+        pairingId: "0123456789abcdef",
+        keyCiphertext: "x",
+        keyIv: "y",
+        keyVersion: 1,
+      });
+      expect((await fkDeviceOfA()).keyCiphertext).toBe("ct-A");
+    },
+    upsertFinancekitAccount: async () =>
+      expect(
+        repos.upsertFinancekitAccount(db, B.scope, {
+          plaidAccountId: A.fkExternalId,
+          name: "stolen",
+          officialName: null,
+          mask: null,
+          type: "credit",
+          subtype: "credit card",
+          bucket: "excluded",
+          currentCents: 0,
+          availableCents: null,
+          isoCurrency: "USD",
+        }),
+      ).rejects.toThrow(/another household/),
+    archiveFinancekitAccounts: async () => {
+      await repos.archiveFinancekitAccounts(db, B.scope);
+      const a = (await repos.listAccounts(db, A.scope)).filter((x) => x.source === "financekit");
+      expect(a.map((x) => x.name)).toEqual(["Apple Card A"]);
+    },
     getHousehold: async () => expect((await repos.getHousehold(db, B.scope))?.id).toBe(B.scope.householdId),
     markOnboarded: async () => {
       await repos.markOnboarded(db, B.scope);
@@ -257,7 +317,7 @@ describe("household isolation", () => {
     getAccount: async () => expect(await repos.getAccount(db, B.scope, A.accountId)).toBeNull(),
     createManualAccount: async () => {
       await repos.createManualAccount(db, B.scope, { name: "x", type: "other", bucket: "cash" });
-      expect((await repos.listAccounts(db, A.scope)).length).toBe(2);
+      expect((await repos.listAccounts(db, A.scope)).length).toBe(3);
     },
     updateAccount: async () =>
       expect(await repos.updateAccount(db, B.scope, A.accountId, { name: "x" })).toBeNull(),

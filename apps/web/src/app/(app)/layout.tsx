@@ -2,6 +2,7 @@ import Link from "next/link";
 import { after } from "next/server";
 import type { ReactNode } from "react";
 import { requireContext } from "@/lib/auth/context";
+import { importFromIphone } from "@/server/financekit";
 import { syncStaleItems } from "@/server/plaid/stale";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await requireContext();
   // Refresh bank data that has gone stale, after the page has been sent.
   after(() => syncStaleItems(ctx).catch(() => 0));
+  // Pick up anything new the iPhone companion app dropped in iCloud Drive.
+  after(() => importFromIphone(ctx).catch(() => null));
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-bg/95 backdrop-blur">

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireContext } from "@/lib/auth/context";
 import { createSupabaseServerClient } from "@/lib/auth/supabase";
+import { importFromIphone, pairIphone, unpairIphone } from "@/server/financekit";
 import type { ActionResult } from "@/server/forms";
 import { plaidConfigured, plaidDeps } from "@/server/plaid/config";
 import { completeUpdateMode, deleteAllData, disconnectItem } from "@/server/plaid/items";
@@ -44,4 +45,40 @@ export async function deleteEverythingAction(_: ActionResult | null, fd: FormDat
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
   redirect("/sign-in");
+}
+
+// ---------- iPhone companion (FinanceKit) ----------
+
+export async function pairIphoneAction(
+  _: ActionResult<{ code: string }> | null,
+  _fd: FormData,
+): Promise<ActionResult<{ code: string }>> {
+  const ctx = await requireContext();
+  try {
+    const { code } = await pairIphone(ctx);
+    revalidatePath("/connections");
+    return { ok: true, data: { code } };
+  } catch {
+    return { ok: false, error: "Could not create a pairing code. Is TOKEN_ENCRYPTION_KEYS set?" };
+  }
+}
+
+export async function unpairIphoneAction(_: ActionResult | null, _fd: FormData): Promise<ActionResult> {
+  const ctx = await requireContext();
+  await unpairIphone(ctx);
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function importIphoneAction(_: ActionResult | null, _fd: FormData): Promise<ActionResult> {
+  const ctx = await requireContext();
+  const r = await importFromIphone(ctx, { force: true });
+  revalidatePath("/", "layout");
+  if (r.status === "imported" || r.status === "unchanged") return { ok: true };
+  const why: Record<string, string> = {
+    "not-paired": "No iPhone is paired.",
+    "no-file": "Nothing from the iPhone yet. Open FIRE Planner Sync on the phone and tap Sync now.",
+    downloading: "iCloud is still downloading the latest sync. Try again in a minute.",
+  };
+  return { ok: false, error: r.error ?? why[r.status] ?? "Import failed" };
 }

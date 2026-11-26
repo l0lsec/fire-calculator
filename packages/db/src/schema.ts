@@ -31,7 +31,7 @@ const updatedAt = () =>
 const cents = (name: string) => bigint(name, { mode: "number" });
 
 export const bucketEnum = fire.enum("bucket", ["cash", "taxable", "traditional", "roth", "hsa", "excluded"]);
-export const accountSourceEnum = fire.enum("account_source", ["plaid", "manual"]);
+export const accountSourceEnum = fire.enum("account_source", ["plaid", "manual", "financekit"]);
 export const itemStatusEnum = fire.enum("item_status", [
   "healthy",
   "login_required",
@@ -394,6 +394,34 @@ export const syncEvents = fire.table(
   ],
 );
 
+/**
+ * The paired iPhone companion app (FinanceKit: Apple Card, Apple Cash, Savings).
+ * The phone encrypts each snapshot with a key shared once at pairing; the key
+ * is stored here sealed with the token keyring. One pairing per household.
+ */
+export const financekitDevices = fire.table(
+  "financekit_devices",
+  {
+    id: id(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    /** Random id the phone puts on every file, so files from an old pairing are ignored. */
+    pairingId: text("pairing_id").notNull(),
+    keyCiphertext: text("key_ciphertext").notNull(),
+    keyIv: text("key_iv").notNull(),
+    keyVersion: integer("key_version").notNull(),
+    deviceName: text("device_name"),
+    /** generatedAt of the newest snapshot imported (phone clock). */
+    lastSnapshotAt: timestamp("last_snapshot_at", { withTimezone: true }),
+    lastImportAt: timestamp("last_import_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("financekit_devices_household_uq").on(t.householdId)],
+);
+
 /** Written when a household deletes all its data; holds no personal data. */
 export const auditTombstones = fire.table("audit_tombstones", {
   id: id(),
@@ -421,4 +449,5 @@ export const HOUSEHOLD_TABLES = {
   spendingProfiles,
   scenarios,
   syncEvents,
+  financekitDevices,
 } as const;
