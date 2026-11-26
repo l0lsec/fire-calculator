@@ -1,7 +1,8 @@
 import { Card } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
-import { usd } from "@/lib/format";
+import { dateText, usd } from "@/lib/format";
 import { netWorthHistory } from "@/server/export";
+import { ExportLink } from "./export-link";
 import { NetWorthChart } from "./net-worth-chart";
 
 export const metadata = { title: "History | FIRE Planner" };
@@ -24,37 +25,26 @@ export default async function HistoryPage() {
           <>
             <NetWorthChart data={data} />
             <p className="num mt-2 text-sm text-ink-3">
-              {first?.date}: {usd(first?.netWorth ?? 0)} to {last?.date}: {usd(last?.netWorth ?? 0)}
+              {first ? dateText(first.date) : ""}: {usd(first?.netWorth ?? 0)} to{" "}
+              {last ? dateText(last.date) : ""}: {usd(last?.netWorth ?? 0)}
             </p>
           </>
         )}
       </Card>
       <Card title="Export your data">
         <div className="flex flex-wrap gap-2 text-sm">
-          <a
-            className="rounded-lg border border-line px-3 py-2 hover:bg-surface-2"
-            href="/api/export?format=json"
-          >
+          <ExportLink href="/api/export?format=json" what="everything as JSON">
             Everything (JSON)
-          </a>
-          <a
-            className="rounded-lg border border-line px-3 py-2 hover:bg-surface-2"
-            href="/api/export?format=csv&kind=transactions"
-          >
+          </ExportLink>
+          <ExportLink href="/api/export?format=csv&kind=transactions" what="your transactions as CSV">
             Transactions (CSV)
-          </a>
-          <a
-            className="rounded-lg border border-line px-3 py-2 hover:bg-surface-2"
-            href="/api/export?format=csv&kind=accounts"
-          >
+          </ExportLink>
+          <ExportLink href="/api/export?format=csv&kind=accounts" what="your accounts as CSV">
             Accounts (CSV)
-          </a>
-          <a
-            className="rounded-lg border border-line px-3 py-2 hover:bg-surface-2"
-            href="/api/export?format=csv&kind=debts"
-          >
+          </ExportLink>
+          <ExportLink href="/api/export?format=csv&kind=debts" what="your debts as CSV">
             Debts (CSV)
-          </a>
+          </ExportLink>
         </div>
         <p className="mt-3 text-xs text-ink-3">Exports never include bank credentials or access tokens.</p>
       </Card>

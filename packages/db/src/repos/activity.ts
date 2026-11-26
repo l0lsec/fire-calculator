@@ -153,6 +153,21 @@ export async function clearOverride(db: Db, scope: HouseholdScope, transactionId
   return rows.length > 0;
 }
 
+export async function getOverride(db: Db, scope: HouseholdScope, transactionId: string) {
+  if (!isUuid(transactionId)) return null;
+  const rows = await db
+    .select()
+    .from(transactionOverrides)
+    .where(
+      and(
+        eq(transactionOverrides.transactionId, transactionId),
+        eq(transactionOverrides.householdId, scope.householdId),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function listOverrides(db: Db, scope: HouseholdScope) {
   return db
     .select()

@@ -15,7 +15,13 @@ export function PersonForm({ v }: { v?: { id: string; name: string; birth: strin
       {v ? <input type="hidden" name="id" value={v.id} /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <FormInput name="name" label="Name" defaultValue={v?.name} autoComplete="given-name" />
-        <FormInput name="birth" label="Birth month" type="month" defaultValue={v?.birth} hint="YYYY-MM" />
+        <FormInput
+          name="birth"
+          label="Birth month"
+          type="month"
+          defaultValue={v?.birth}
+          hint="The month and year you were born"
+        />
       </div>
     </ActionForm>
   );
@@ -88,12 +94,20 @@ export function ContributionForm() {
 export function SpendingForm({
   v,
   plaidAvailable,
+  variant = "primary",
 }: {
   v: { source: string; annual: string; essential: string };
   plaidAvailable: boolean;
+  /** "secondary" when another action in the same card is the main one. */
+  variant?: "primary" | "secondary";
 }) {
   return (
-    <ActionForm action={saveSpendingAction} submitLabel="Save spending" successMessage="Saved.">
+    <ActionForm
+      action={saveSpendingAction}
+      submitLabel="Save spending"
+      successMessage="Saved."
+      variant={variant}
+    >
       <FormSelect name="source" label="Measure spending from" defaultValue={v.source}>
         <option value="manual">My own estimate</option>
         <option value="plaid" disabled={!plaidAvailable}>
@@ -146,14 +160,10 @@ export interface AssumptionValues {
 
 export function AssumptionsForm({ v }: { v: AssumptionValues }) {
   return (
-    <ActionForm
-      action={saveAssumptionsAction}
-      submitLabel="Save assumptions"
-      successMessage="Saved. The dashboard is updated."
-    >
+    <ActionForm action={saveAssumptionsAction} submitLabel="Save assumptions" successMessage="Saved.">
       <input type="hidden" name="scenarioId" value={v.scenarioId} />
       <fieldset className="grid gap-3 sm:grid-cols-3">
-        <legend className="mb-2 text-sm font-semibold">Markets</legend>
+        <legend className="mb-2 text-sm font-semibold">The essentials</legend>
         <FormInput
           name="nominalReturn"
           label="Investment return (%/yr)"
@@ -162,28 +172,12 @@ export function AssumptionsForm({ v }: { v: AssumptionValues }) {
         />
         <FormInput name="inflation" label="Inflation (%/yr)" defaultValue={v.inflation} inputMode="decimal" />
         <FormInput
-          name="cashReturn"
-          label="Cash return (%/yr)"
-          defaultValue={v.cashReturn}
-          inputMode="decimal"
-        />
-        <FormInput name="raiseRate" label="Raises (%/yr)" defaultValue={v.raiseRate} inputMode="decimal" />
-        <FormInput
           name="swr"
           label="Withdrawal rate (%)"
           defaultValue={v.swr}
           inputMode="decimal"
           hint="4% comes from 30-year retirements; 3.25 to 3.5% suits 40 years or more."
         />
-        <FormInput
-          name="withdrawalTaxRate"
-          label="Tax on withdrawals (%)"
-          defaultValue={v.withdrawalTaxRate}
-          inputMode="decimal"
-        />
-      </fieldset>
-      <fieldset className="grid gap-3 sm:grid-cols-3">
-        <legend className="mb-2 text-sm font-semibold">Timeline</legend>
         <FormSelect name="retireMode" label="Stop working" defaultValue={v.retireMode}>
           <option value="fi">When FI is reached</option>
           <option value="age">At a chosen age</option>
@@ -193,13 +187,7 @@ export function AssumptionsForm({ v }: { v: AssumptionValues }) {
           label="Chosen age (if fixed)"
           defaultValue={v.retireAge}
           inputMode="decimal"
-        />
-        <FormInput
-          name="retirementAge"
-          label="Traditional retirement age"
-          defaultValue={v.retirementAge}
-          inputMode="decimal"
-          hint="Coast FI is measured against this age."
+          hint="Only used when you stop at a chosen age."
         />
         <FormInput
           name="lifeExpectancy"
@@ -207,72 +195,110 @@ export function AssumptionsForm({ v }: { v: AssumptionValues }) {
           defaultValue={v.lifeExpectancy}
           inputMode="decimal"
         />
-        <FormInput
-          name="emergencyMonths"
-          label="Emergency fund (months of essentials)"
-          defaultValue={v.emergencyMonths}
-          inputMode="decimal"
-        />
-        <FormInput
-          name="fatMultiplier"
-          label="Fat FI spending multiple"
-          defaultValue={v.fatMultiplier}
-          inputMode="decimal"
-        />
       </fieldset>
-      <fieldset className="grid gap-3 sm:grid-cols-3">
-        <legend className="mb-2 text-sm font-semibold">Barista FI (part-time work)</legend>
-        <FormInput
-          name="partTimeAnnual"
-          label="Part-time income ($/yr, net)"
-          defaultValue={v.partTimeAnnual}
-          inputMode="decimal"
-        />
-        <FormInput
-          name="partTimeHealth"
-          label="Extra health cost ($/yr)"
-          defaultValue={v.partTimeHealth}
-          inputMode="decimal"
-        />
-        <FormInput
-          name="partTimeUntil"
-          label="Until age (blank: indefinitely)"
-          defaultValue={v.partTimeUntil}
-          inputMode="decimal"
-        />
-      </fieldset>
-      <fieldset className="grid gap-3 sm:grid-cols-2">
-        <legend className="mb-2 text-sm font-semibold">Debt</legend>
-        <FormSelect name="policy" label="Debt at FI" defaultValue={v.policy}>
-          <option value="payoffAtFI">Pay everything off at FI (count balances in the target)</option>
-          <option value="keepMortgage">Keep the mortgage (count its payments at expected returns)</option>
-          <option value="debtFreeFirst">Not FI until consumer debt is gone</option>
-        </FormSelect>
-        <FormSelect name="strategy" label="Payoff strategy" defaultValue={v.strategy}>
-          <option value="avalanche">Avalanche (highest rate first)</option>
-          <option value="snowball">Snowball (smallest balance first)</option>
-          <option value="hybrid">Hybrid (only debts above the threshold)</option>
-          <option value="custom">Custom order</option>
-          <option value="minimum">Minimum payments only</option>
-        </FormSelect>
-        <FormInput
-          name="extraMonthly"
-          label="Extra toward debt ($/mo)"
-          defaultValue={v.extraMonthly}
-          inputMode="decimal"
-        />
-        <FormInput
-          name="hybridThreshold"
-          label="High-interest threshold (%)"
-          defaultValue={v.hybridThreshold}
-          inputMode="decimal"
-        />
-      </fieldset>
-      <FormCheckbox
-        name="countGuaranteedIncome"
-        label="Count Social Security and pensions in FI targets (from their start age)"
-        defaultChecked={v.countGuaranteedIncome}
-      />
+      <details className="rounded-lg border border-line p-3 open:pb-4" data-testid="more-assumptions">
+        <summary className="flex min-h-10 cursor-pointer items-center text-sm font-medium text-accent pointer-coarse:min-h-11">
+          More assumptions: cash, raises, taxes, Fat and Barista FI, debt
+        </summary>
+        <div className="mt-3 flex flex-col gap-4">
+          <fieldset className="grid gap-3 sm:grid-cols-3">
+            <legend className="mb-2 text-sm font-semibold">Markets and pay</legend>
+            <FormInput
+              name="cashReturn"
+              label="Cash return (%/yr)"
+              defaultValue={v.cashReturn}
+              inputMode="decimal"
+            />
+            <FormInput
+              name="raiseRate"
+              label="Raises (%/yr)"
+              defaultValue={v.raiseRate}
+              inputMode="decimal"
+            />
+            <FormInput
+              name="withdrawalTaxRate"
+              label="Tax on withdrawals (%)"
+              defaultValue={v.withdrawalTaxRate}
+              inputMode="decimal"
+            />
+          </fieldset>
+          <fieldset className="grid gap-3 sm:grid-cols-3">
+            <legend className="mb-2 text-sm font-semibold">Targets</legend>
+            <FormInput
+              name="retirementAge"
+              label="Traditional retirement age"
+              defaultValue={v.retirementAge}
+              inputMode="decimal"
+              hint="Coast FI is measured against this age."
+            />
+            <FormInput
+              name="emergencyMonths"
+              label="Emergency fund (months of essentials)"
+              defaultValue={v.emergencyMonths}
+              inputMode="decimal"
+            />
+            <FormInput
+              name="fatMultiplier"
+              label="Fat FI spending multiple"
+              defaultValue={v.fatMultiplier}
+              inputMode="decimal"
+            />
+          </fieldset>
+          <fieldset className="grid gap-3 sm:grid-cols-3">
+            <legend className="mb-2 text-sm font-semibold">Barista FI (part-time work)</legend>
+            <FormInput
+              name="partTimeAnnual"
+              label="Part-time income ($/yr, net)"
+              defaultValue={v.partTimeAnnual}
+              inputMode="decimal"
+            />
+            <FormInput
+              name="partTimeHealth"
+              label="Extra health cost ($/yr)"
+              defaultValue={v.partTimeHealth}
+              inputMode="decimal"
+            />
+            <FormInput
+              name="partTimeUntil"
+              label="Until age (blank: indefinitely)"
+              defaultValue={v.partTimeUntil}
+              inputMode="decimal"
+            />
+          </fieldset>
+          <fieldset className="grid gap-3 sm:grid-cols-2">
+            <legend className="mb-2 text-sm font-semibold">Debt</legend>
+            <FormSelect name="policy" label="Debt at FI" defaultValue={v.policy}>
+              <option value="payoffAtFI">Pay everything off at FI (count balances in the target)</option>
+              <option value="keepMortgage">Keep the mortgage (count its payments at expected returns)</option>
+              <option value="debtFreeFirst">Not FI until consumer debt is gone</option>
+            </FormSelect>
+            <FormSelect name="strategy" label="Payoff strategy" defaultValue={v.strategy}>
+              <option value="avalanche">Avalanche (highest rate first)</option>
+              <option value="snowball">Snowball (smallest balance first)</option>
+              <option value="hybrid">Hybrid (only debts above the threshold)</option>
+              <option value="custom">Custom order</option>
+              <option value="minimum">Minimum payments only</option>
+            </FormSelect>
+            <FormInput
+              name="extraMonthly"
+              label="Extra toward debt ($/mo)"
+              defaultValue={v.extraMonthly}
+              inputMode="decimal"
+            />
+            <FormInput
+              name="hybridThreshold"
+              label="High-interest threshold (%)"
+              defaultValue={v.hybridThreshold}
+              inputMode="decimal"
+            />
+          </fieldset>
+          <FormCheckbox
+            name="countGuaranteedIncome"
+            label="Count Social Security and pensions in FI targets (from their start age)"
+            defaultChecked={v.countGuaranteedIncome}
+          />
+        </div>
+      </details>
     </ActionForm>
   );
 }

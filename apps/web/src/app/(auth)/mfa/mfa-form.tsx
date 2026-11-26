@@ -4,6 +4,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Button, Field, Input, Notice } from "@/components/ui";
 import { safeNext } from "@/lib/auth/access";
 import { supabaseBrowser } from "@/lib/auth/browser";
+import { explainError } from "@/lib/explain-error";
 
 type Stage =
   | { kind: "loading" }
@@ -20,6 +21,7 @@ export function MfaForm() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    setError(null);
     const supabase = supabaseBrowser();
     const aal = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aal.error) {
@@ -32,7 +34,7 @@ export function MfaForm() {
     }
     const factors = await supabase.auth.mfa.listFactors();
     if (factors.error) {
-      setError(factors.error.message);
+      setError(explainError(factors.error, "auth"));
       return;
     }
     const verified = factors.data.totp.find((f) => f.status === "verified");
@@ -49,7 +51,7 @@ export function MfaForm() {
       friendlyName: `Authenticator ${Date.now()}`,
     });
     if (enrolled.error) {
-      setError(enrolled.error.message);
+      setError(explainError(enrolled.error, "auth"));
       return;
     }
     setStage({
@@ -75,7 +77,14 @@ export function MfaForm() {
     });
     setBusy(false);
     if (res.error) {
-      setError("That code did not match. Codes change every 30 seconds; try the current one.");
+      const text = explainError(res.error, "auth");
+      // Anything that is not a rate limit or an expired session is a wrong code.
+      setError(
+        /Too many|session ended/.test(text)
+          ? text
+          : "That code did not match. Codes change every 30 seconds; try the current one.",
+      );
+      setCode("");
       return;
     }
     router.replace(next);
@@ -88,6 +97,7 @@ export function MfaForm() {
       {stage.kind === "loading" ? <p className="text-sm text-ink-3">Checking your account...</p> : null}
       {stage.kind === "enroll" ? (
         <>
+          <p className="text-xs font-medium text-ink-3">Step 1 of 2: scan the code</p>
           <p className="text-sm text-ink-2">
             Your financial data is protected by a second factor. Scan this code with an authenticator app
             (1Password, Google Authenticator, Authy), then enter the 6-digit code it shows.
@@ -111,6 +121,9 @@ export function MfaForm() {
       ) : null}
       {stage.kind !== "loading" ? (
         <>
+          {stage.kind === "enroll" ? (
+            <p className="text-xs font-medium text-ink-3">Step 2 of 2: enter the 6-digit code</p>
+          ) : null}
           <Field label="Verification code" htmlFor="code">
             <Input
               id="code"
@@ -120,6 +133,7 @@ export function MfaForm() {
               maxLength={6}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              autoFocus
             />
           </Field>
           <Button type="submit" disabled={busy || code.length !== 6}>
@@ -127,7 +141,14 @@ export function MfaForm() {
           </Button>
         </>
       ) : null}
-      {error ? <Notice tone="bad">{error}</Notice> : null}
+      <div aria-live="polite" className="flex flex-col gap-2">
+        {error ? <Notice tone="bad">{error}</Notice> : null}
+        {error && stage.kind === "loading" ? (
+          <Button variant="secondary" onClick={() => void load()}>
+            Try again
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }

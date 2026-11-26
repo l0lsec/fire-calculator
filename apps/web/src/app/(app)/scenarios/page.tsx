@@ -70,7 +70,11 @@ export default async function ScenariosPage({
                   <ButtonForm
                     action={deleteScenarioAction}
                     label="Delete"
-                    confirm={`Delete ${s.name}?`}
+                    confirm={{
+                      title: `Delete ${s.name}?`,
+                      body: "Its assumptions and spending lines are removed. Your baseline plan is not affected. This cannot be undone.",
+                    }}
+                    doneMessage={`Deleted ${s.name}.`}
                     hidden={{ id: s.id }}
                   />
                 ) : null}
@@ -82,7 +86,8 @@ export default async function ScenariosPage({
       </Card>
 
       <Card title="Side by side">
-        <div className="overflow-x-auto">
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable table must be reachable by keyboard */}
+        <section className="overflow-x-auto" aria-label="Scenario comparison" tabIndex={0}>
           <table className="w-full min-w-[560px] text-sm" data-testid="compare-table">
             <thead>
               <tr className="border-b border-line text-left text-xs text-ink-3">
@@ -154,7 +159,7 @@ export default async function ScenariosPage({
               </tr>
             </tbody>
           </table>
-        </div>
+        </section>
         <p className="mt-2 text-xs text-ink-3">
           Success is the share of 200 simulated market paths (15% yearly volatility around your return
           assumption) in which the money lasts, retiring at each plan&apos;s FI date.

@@ -1,5 +1,6 @@
 // Small, shared UI primitives. Tokens come from globals.css.
-import type { ButtonHTMLAttributes, ComponentProps, ReactNode, SelectHTMLAttributes } from "react";
+import Link from "next/link";
+import type { ComponentProps, ReactNode, SelectHTMLAttributes } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -14,11 +15,25 @@ export function Button({
   variant = "primary",
   className = "",
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ComponentProps<"button"> & { variant?: Variant }) {
   return (
     <button
       type="button"
-      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex min-h-10 items-center pointer-coarse:min-h-11 justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      {...rest}
+    />
+  );
+}
+
+/** A link that looks and sizes like a Button, for "go do this" calls to action. */
+export function ButtonLink({
+  variant = "secondary",
+  className = "",
+  ...rest
+}: ComponentProps<typeof Link> & { variant?: Variant }) {
+  return (
+    <Link
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors pointer-coarse:min-h-11 ${variants[variant]} ${className}`}
       {...rest}
     />
   );
@@ -56,7 +71,7 @@ export function Field({
 export function Input({ className = "", ...rest }: ComponentProps<"input">) {
   return (
     <input
-      className={`min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent ${className}`}
+      className={`min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink pointer-coarse:min-h-11 placeholder:text-ink-3 focus:border-accent ${className}`}
       {...rest}
     />
   );
@@ -65,7 +80,7 @@ export function Input({ className = "", ...rest }: ComponentProps<"input">) {
 export function Select({ className = "", children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className={`min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent ${className}`}
+      className={`min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink pointer-coarse:min-h-11 focus:border-accent ${className}`}
       {...rest}
     >
       {children}

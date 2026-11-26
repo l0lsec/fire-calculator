@@ -27,7 +27,9 @@ export function usdCents(cents: number, opts: { cents?: boolean; compact?: boole
 }
 
 export function pct(rate: number, digits = 2): string {
-  return `${(rate * 100).toFixed(digits).replace(/\.?0+$/, "")}%`;
+  // Trim trailing zeros after the point only: 0 stays "0%", 7.50 becomes "7.5%".
+  const fixed = (rate * 100).toFixed(digits);
+  return `${fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed}%`;
 }
 
 export function monthName(m: number): string {
@@ -46,4 +48,24 @@ export function duration(months: number): string {
 
 export function age(a: number): string {
   return a.toFixed(1).replace(/\.0$/, "");
+}
+
+const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const dateTimeFmt = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/** "Nov 26, 2026" from an ISO timestamp or date, in local time. */
+export function dateText(iso: string): string {
+  const d = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso);
+  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
+}
+
+/** "Nov 26, 2:14 PM" from an ISO timestamp, in local time. */
+export function dateTimeText(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : dateTimeFmt.format(d);
 }

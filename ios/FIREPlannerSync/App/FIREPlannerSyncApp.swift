@@ -75,7 +75,7 @@ final class SyncModel {
             pairing = PairingStore.load()
             message = "Paired with your Mac."
         } catch {
-            message = "Could not save the pairing: \(error.localizedDescription)"
+            message = "Could not save the pairing on this phone. Copy the code on the Mac again, then paste it."
         }
     }
 
@@ -97,7 +97,7 @@ final class SyncModel {
                 await syncNow()
             }
         } catch {
-            message = "Wallet access failed: \(error.localizedDescription)"
+            message = "Wallet access did not work. Try again, or turn it on in Settings > Apps > FIRE Planner Sync > Wallet."
         }
     }
 

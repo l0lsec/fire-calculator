@@ -2,7 +2,9 @@
 // Inline "rate needed" boxes: type the APR right on the dashboard instead of
 // going to the Debts page. The first box is focused on load, and saving one
 // moves focus to the next, so several rates can be entered in a row.
-import { useActionState, useEffect, useId, useRef } from "react";
+import { startTransition, useActionState, useCallback, useEffect, useId, useRef } from "react";
+import type { FormAction } from "@/components/action-form";
+import { useToast } from "@/components/toast";
 import { Button, Input } from "@/components/ui";
 import { saveDebtRateAction } from "../debts/actions";
 
@@ -21,14 +23,36 @@ function RateRow({
   autoFocus: boolean;
   onSubmit: () => void;
 }) {
-  const [state, action, pending] = useActionState(saveDebtRateAction, null);
+  const toast = useToast();
+  // The row leaves the list once its rate is saved, so the result is a toast.
+  const save = useCallback<FormAction>(
+    async (prev, fd) => {
+      const r = await saveDebtRateAction(prev, fd);
+      const message = r.ok ? (r.data as { message?: string } | undefined)?.message : undefined;
+      if (message) toast({ message: `${debt.name}: ${message}`, tone: "good" });
+      return r;
+    },
+    [debt.name, toast],
+  );
+  const [state, action, pending] = useActionState(save, null);
   const inputId = useId();
   const errorId = useId();
   const error = state && !state.ok ? (state.fieldErrors?.apr ?? state.error) : undefined;
 
   return (
     <li>
-      <form action={action} onSubmit={onSubmit} className="flex flex-wrap items-end gap-2" noValidate>
+      <form
+        action={action}
+        onSubmit={(e) => {
+          // Our own transition: React then keeps a mistyped rate in the box to fix.
+          e.preventDefault();
+          onSubmit();
+          const fd = new FormData(e.currentTarget);
+          startTransition(() => action(fd));
+        }}
+        className="flex flex-wrap items-end gap-2"
+        noValidate
+      >
         <input type="hidden" name="id" value={debt.id} />
         <label htmlFor={inputId} className="min-w-0 flex-1 text-sm">
           <span className="block font-medium text-ink">{debt.name}</span>

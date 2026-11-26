@@ -4,6 +4,7 @@ import {
   deriveSpending,
   escrowFromPayment,
   matchTransfers,
+  type SpendingAccount,
   type SpendingInput,
   type SpendingTx,
   spendingWindow,
@@ -259,7 +260,7 @@ describe("payments to your own cards", () => {
     pfcDetailed: "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
     pending: false,
   });
-  const run = (txs: SpendingTx[], accounts = [checking, quicksilver, discover]) =>
+  const run = (txs: SpendingTx[], accounts: SpendingAccount[] = [checking, quicksilver, discover]) =>
     deriveSpending({ asOf: "2026-11-26", accounts, transactions: txs });
   const classOf = (s: ReturnType<typeof run>, name: string) =>
     s.classified.filter((c) => c.tx.name === name).map((c) => c.class);

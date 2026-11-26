@@ -83,11 +83,16 @@ export const AssumptionsForm = z.object({
   swr: percent({ min: 0.5, max: 20 }),
   retirementAge: z.coerce.number().min(30, "Between 30 and 90").max(90, "Between 30 and 90"),
   lifeExpectancy: z.coerce.number().min(50, "Between 50 and 120").max(120, "Between 50 and 120"),
-  emergencyMonths: z.coerce.number().min(0).max(36),
-  fatMultiplier: z.coerce.number().min(1, "At least 1").max(10),
+  emergencyMonths: z.coerce.number().min(0, "Between 0 and 36 months").max(36, "Between 0 and 36 months"),
+  fatMultiplier: z.coerce.number().min(1, "Between 1 and 10").max(10, "Between 1 and 10"),
   withdrawalTaxRate: percent({ min: 0, max: 60 }),
   retireMode: z.enum(["fi", "age"]),
-  retireAge: z.coerce.number().min(18).max(100).optional(),
+  // Blank is allowed (it only matters when stopping at a chosen age); without
+  // the preprocess, z.coerce turns "" into 0 and every save in FI mode fails.
+  retireAge: z.preprocess(
+    (v) => (v === "" || v === null ? undefined : v),
+    z.coerce.number().min(18, "Between 18 and 100").max(100, "Between 18 and 100").optional(),
+  ),
   partTimeAnnual: dollars({ optional: true, max: 10_000_000 }),
   partTimeHealth: dollars({ optional: true, max: 1_000_000 }),
   partTimeUntil: z.string().optional(),

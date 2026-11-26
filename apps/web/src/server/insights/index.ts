@@ -152,17 +152,37 @@ export async function suggestBudgets(
 
 const KEY = z.string().min(3).max(300);
 
-export async function dismissAlert(ctx: Ctx, key: string): Promise<ActionResult> {
-  if (!KEY.safeParse(key).success) return { ok: false, error: "Unknown alert" };
+export async function dismissAlert(
+  ctx: Ctx,
+  key: string,
+): Promise<ActionResult<{ message: string; undo: Record<string, string> }>> {
+  if (!KEY.safeParse(key).success) return { ok: false, error: "That alert is gone; reload the page." };
   await dismissAlerts(ctx.db, ctx.scope, [key]);
+  return { ok: true, data: { message: "Alert dismissed.", undo: { key } } };
+}
+
+/** Bring back a dismissed alert (Undo). */
+export async function restoreAlert(ctx: Ctx, key: string): Promise<ActionResult> {
+  if (!KEY.safeParse(key).success) return { ok: false, error: "Could not undo that." };
+  await restoreAlerts(ctx.db, ctx.scope, [key]);
   return { ok: true };
 }
 
-export async function hideRecurring(ctx: Ctx, seriesKey: string, hide: boolean): Promise<ActionResult> {
-  if (!KEY.safeParse(seriesKey).success) return { ok: false, error: "Unknown charge" };
+export async function hideRecurring(
+  ctx: Ctx,
+  seriesKey: string,
+  hide: boolean,
+): Promise<ActionResult<{ message: string; undo: Record<string, string> }>> {
+  if (!KEY.safeParse(seriesKey).success) return { ok: false, error: "That charge is gone; reload the page." };
   if (hide) await dismissAlerts(ctx.db, ctx.scope, [HIDE_PREFIX + seriesKey]);
   else await restoreAlerts(ctx.db, ctx.scope, [HIDE_PREFIX + seriesKey]);
-  return { ok: true };
+  return {
+    ok: true,
+    data: {
+      message: hide ? "Marked not recurring." : "Back in your recurring charges.",
+      undo: { key: seriesKey, hide: hide ? "false" : "true" },
+    },
+  };
 }
 
 const SettingsForm = z.object({

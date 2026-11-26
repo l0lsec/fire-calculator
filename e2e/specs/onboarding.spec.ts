@@ -41,14 +41,14 @@ test("a manual-only household goes from sign-up to a dashboard with dates", asyn
   await income.getByLabel("Name").fill("Salary");
   await income.getByLabel("Monthly amount (after tax)").fill("6,500");
   await income.getByRole("button", { name: "Add income" }).click();
-  await expect(income.getByText("Salary")).toBeVisible();
+  await expect(income.locator("li", { hasText: "Salary" })).toBeVisible();
 
   await page.goto("/accounts");
   await page.getByLabel("Name").last().fill("Index funds");
   await page.getByLabel("Type").last().selectOption("taxable");
   await page.getByLabel("Balance").last().fill("60,000");
   await page.getByRole("button", { name: "Add account" }).click();
-  await expect(page.getByText("Index funds")).toBeVisible();
+  await expect(page.getByText("Index funds", { exact: true })).toBeVisible();
 
   await page.goto("/dashboard");
   await expect(page.getByTestId("fi-target")).toBeVisible();

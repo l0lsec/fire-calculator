@@ -15,5 +15,14 @@ export async function suggestBudgetsAction(_: ActionResult | null, _fd: FormData
   const ctx = await requireContext();
   const r = await suggestBudgets(ctx);
   revalidatePath("/", "layout");
-  return r;
+  if (!r.ok) return r;
+  const n = r.data?.set ?? 0;
+  return {
+    ok: true,
+    data: {
+      message: n
+        ? `Set ${n} ${n === 1 ? "budget" : "budgets"} from your typical month. Change any of them below.`
+        : "Every category already has a budget.",
+    },
+  };
 }

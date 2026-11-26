@@ -24,9 +24,16 @@ interface Ctx {
 }
 
 const birthMonth = z.string().transform((s, ctx) => {
-  const m = /^(\d{4})-(\d{2})$/.exec(s.trim());
+  // Accept 1991-04 (what the month picker sends), 1991-4 and 04/1991.
+  const t = s.trim();
+  if (!t) {
+    ctx.addIssue({ code: "custom", message: "Enter a birth month" });
+    return z.NEVER;
+  }
+  const us = /^(\d{1,2})\/(\d{4})$/.exec(t);
+  const m = us ? [t, us[2], us[1]!.padStart(2, "0")] : /^(\d{4})-(\d{1,2})$/.exec(t);
   if (!m) {
-    ctx.addIssue({ code: "custom", message: "Use YYYY-MM" });
+    ctx.addIssue({ code: "custom", message: "Enter a month like 1991-04 or 04/1991" });
     return z.NEVER;
   }
   const y = Number(m[1]);
@@ -58,7 +65,12 @@ export async function savePerson(
   try {
     await createPerson(ctx.db, ctx.scope, values);
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return {
+      ok: false,
+      error: /at most two/.test(String((e as Error)?.message))
+        ? "A plan holds at most two people. Remove one first."
+        : "Could not add this person. Try again.",
+    };
   }
   return { ok: true };
 }
@@ -121,8 +133,8 @@ export async function saveIncome(
         : { ok: false, error: "Not found" };
     }
     await createIncomeStream(ctx.db, ctx.scope, values);
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
+  } catch {
+    return { ok: false, error: "Could not save this income. Reload the page and try again." };
   }
   return { ok: true };
 }

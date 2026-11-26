@@ -1,31 +1,46 @@
 "use client";
 // Shows the one-time pairing code for the FIRE Planner Sync iPhone app.
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button, Notice } from "@/components/ui";
 import { pairIphoneAction } from "./actions";
 
 export function IphonePair({ paired }: { paired: boolean }) {
   const [state, action, pending] = useActionState(pairIphoneAction, null);
   const [copied, setCopied] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const create = () => startTransition(() => action(new FormData()));
   const code = state?.ok ? state.data?.code : undefined;
   return (
     <div className="flex flex-col gap-3">
       <form
         action={action}
         onSubmit={(e) => {
-          if (
-            paired &&
-            !window.confirm(
-              "Pair again? The current iPhone stops syncing until you paste the new code into it.",
-            )
-          )
-            e.preventDefault();
+          e.preventDefault();
+          if (paired) setAsking(true);
+          else create();
         }}
       >
         <Button type="submit" variant={paired ? "secondary" : "primary"} disabled={pending}>
           {pending ? "Creating code..." : paired ? "Pair again" : "Pair iPhone"}
         </Button>
       </form>
+      {asking ? (
+        <ConfirmDialog
+          open
+          spec={{
+            title: "Pair again?",
+            body: "The current iPhone stops syncing until you paste the new code into it.",
+            confirmLabel: "Pair again",
+            destructive: true,
+          }}
+          onCancel={() => setAsking(false)}
+          onConfirm={() => {
+            setAsking(false);
+            create();
+          }}
+        />
+      ) : null}
       {state && !state.ok && state.error ? <Notice tone="bad">{state.error}</Notice> : null}
       {code ? (
         <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-3">

@@ -72,14 +72,20 @@ export default async function DebtsPage() {
                     <ButtonForm
                       action={deleteDebtAction}
                       label="Delete"
-                      confirm={`Delete ${d.name}?`}
+                      confirm={{
+                        title: `Delete ${d.name}?`,
+                        body: "Its balance and payments leave your plan, and your FI date is recalculated. This cannot be undone.",
+                      }}
+                      doneMessage={`Deleted ${d.name}.`}
                       hidden={{ id: d.id }}
                     />
                   )}
                 </div>
               </div>
               <details className="mt-2">
-                <summary className="cursor-pointer text-xs text-accent">Edit</summary>
+                <summary className="flex min-h-10 cursor-pointer items-center text-sm text-accent pointer-coarse:min-h-11">
+                  Edit
+                </summary>
                 <div className="mt-3">
                   <DebtForm
                     v={{
