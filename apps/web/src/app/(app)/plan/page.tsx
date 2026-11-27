@@ -2,11 +2,14 @@ import { listItems } from "@fire/db";
 import { yearMonth } from "@fire/engine/core";
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
+import { DrillButton } from "@/components/breakdown";
 import { Card, Disclaimer } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { pct, usd, usdCents } from "@/lib/format";
+import { chargeFinder } from "@/server/charges";
 import { loadScenario, readScenario } from "@/server/scenarios";
 import { hasConnectedAccounts, loadHousehold, todayISO } from "@/server/snapshot";
+import { measuredIncomeBreakdown, spendingBreakdowns } from "@/server/spending";
 import {
   deleteContributionAction,
   deleteIncomeAction,
@@ -55,6 +58,11 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const a = s.assumptions;
   const people = data.people.map((p) => ({ id: p.id, name: p.name }));
   const connected = items.length > 0 || hasConnectedAccounts(data);
+  // The measured figures open the transactions they come from (law 19).
+  const find = data.measured ? chargeFinder(data.measured.classified, data.accounts) : null;
+  const spendingDrill = data.measured && find ? spendingBreakdowns(data.measured, find).annual : null;
+  const incomeDrill =
+    data.measured && find ? measuredIncomeBreakdown(data.measured, find, data.accounts) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,6 +109,11 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             </Link>
           </p>
         ) : null}
+        {spendingDrill && data.derivedSpending?.livingCents ? (
+          <div className="mb-4">
+            <DrillButton breakdown={spendingDrill} testId="plan-spending-drill" />
+          </div>
+        ) : null}
         <SpendingForm
           plaidAvailable={connected}
           v={{
@@ -114,6 +127,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             From your accounts: {usdCents(data.derivedSpending.totalCents)} a year, of which escrow{" "}
             {usdCents(data.derivedSpending.escrowCents)}.
           </p>
+        ) : null}
+        {spendingDrill && !data.derivedSpending?.livingCents && connected && data.measured?.livingCents ? (
+          <div className="mt-3">
+            <DrillButton
+              breakdown={spendingDrill}
+              label="See what your accounts measured"
+              testId="plan-spending-drill"
+            />
+          </div>
         ) : null}
       </Card>
 
@@ -135,6 +157,11 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
               </>
             )}
           </p>
+        ) : null}
+        {incomeDrill && data.measuredIncome && data.measuredIncome.annualCents > 0 ? (
+          <div className="mb-3">
+            <DrillButton breakdown={incomeDrill} testId="plan-income-drill" />
+          </div>
         ) : null}
         {data.income.length ? (
           <ul className="mb-4 divide-y divide-line">

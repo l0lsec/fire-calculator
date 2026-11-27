@@ -7,7 +7,7 @@ import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
 import { loadInsights } from "@/server/insights";
-import { safeBreakdown } from "@/server/insights/breakdowns";
+import { accountLowBreakdown, safeBreakdown } from "@/server/insights/breakdowns";
 import { addBillAction, removeBillAction, saveCushionAction } from "./actions";
 
 export const metadata = { title: "Safe to spend | FIRE Planner" };
@@ -289,17 +289,27 @@ export default async function SafeToSpendPage() {
                 {g.rows.map((f) => (
                   <li
                     key={f.account.id}
-                    className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                    className="flex flex-col gap-1 py-2 text-sm"
+                    data-testid="safe-account"
                   >
-                    <span className="min-w-0 truncate">{names.get(f.account.id)}</span>
-                    <span className="flex items-center gap-3 text-xs text-ink-3">
-                      <span>
-                        now <span className="num text-sm text-ink">{usdCents(f.startCents)}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="min-w-0 truncate">{names.get(f.account.id)}</span>
+                      <span className="flex items-center gap-3 text-xs text-ink-3">
+                        <span>
+                          now <span className="num text-sm text-ink">{usdCents(f.startCents)}</span>
+                        </span>
+                        <span className={f.low.cents < 0 ? "font-semibold text-bad" : ""}>
+                          lowest <span className="num">{usdCents(f.low.cents)}</span> on {short(f.low.date)}
+                        </span>
                       </span>
-                      <span className={f.low.cents < 0 ? "font-semibold text-bad" : ""}>
-                        lowest <span className="num">{usdCents(f.low.cents)}</span> on {short(f.low.date)}
-                      </span>
-                    </span>
+                    </div>
+                    <DrillButton
+                      breakdown={accountLowBreakdown(f, names.get(f.account.id) ?? "This account", (ids) =>
+                        charges.byIds(ids),
+                      )}
+                      label="How the lowest point is worked out"
+                      testId="account-low-drill"
+                    />
                   </li>
                 ))}
               </ul>

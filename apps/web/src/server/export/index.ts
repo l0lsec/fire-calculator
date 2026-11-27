@@ -21,6 +21,7 @@ import {
 } from "@fire/db";
 import { z } from "zod";
 import { balanceHistory } from "@/lib/chart-data";
+import { balanceDayBreakdowns } from "../charts/breakdowns";
 import { readScenario } from "../scenarios";
 import { loadHousehold, measuredMonthlyCents, spendingBasis } from "../snapshot";
 import { todayISO } from "../today";
@@ -320,4 +321,13 @@ export async function balanceHistoryRange(ctx: Ctx, from: string, to: string) {
     listAccounts(ctx.db, ctx.scope, { includeArchived: true }),
   ]);
   return balanceHistory(snaps, accounts);
+}
+
+/** The same history, with each day's balances by account (what the History chart opens). */
+export async function balanceHistoryDetail(ctx: Ctx, from: string, to: string) {
+  const [snaps, accounts] = await Promise.all([
+    listSnapshots(ctx.db, ctx.scope, from, to),
+    listAccounts(ctx.db, ctx.scope, { includeArchived: true }),
+  ]);
+  return { points: balanceHistory(snaps, accounts), days: balanceDayBreakdowns(snaps, accounts) };
 }

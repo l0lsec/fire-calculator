@@ -72,6 +72,8 @@ export interface DashboardModel {
     interest: number;
     saved: number;
   }[];
+  /** What each month's bar is made of (same order as incomeByMonth). */
+  incomeByMonthDrill: Breakdown[];
   retireLabel: string | null;
   chips: { label: string; value: string }[];
   warnings: EngineWarning[];
@@ -113,6 +115,7 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
       breakdowns: null,
       chart: [],
       incomeByMonth: [],
+      incomeByMonthDrill: [],
       retireLabel: null,
       chips,
       warnings: [],
@@ -209,6 +212,31 @@ export function dashboardModel(plan: HouseholdPlan): DashboardModel {
       label: monthName(input.startMonth + k),
       ...m,
     })),
+    incomeByMonthDrill: bd.firstYear.byMonth.map((m) => {
+      const label = monthName(input.startMonth + m.k);
+      return {
+        id: `income-month-${m.k}`,
+        title: label,
+        intro: `Where ${label}'s income goes on your current path: take-home pay plus contributions taken before tax, less living spending, escrow and debt interest. What is left is saved.`,
+        steps: [
+          {
+            lines: [
+              { op: "+" as const, label: "Income", value: m.income },
+              { op: "-" as const, label: "Living spending", value: m.living },
+              ...(m.escrow > 0.005 ? [{ op: "-" as const, label: "Mortgage escrow", value: m.escrow }] : []),
+              ...(m.interest > 0.005
+                ? [{ op: "-" as const, label: "Interest on debts", value: m.interest }]
+                : []),
+            ],
+            total: { label: `Saved in ${label}`, value: m.saved, testId: "income-month-saved" },
+          },
+        ],
+        links: [
+          { href: "#savings-rate", label: "Savings rate: what each line is made of" },
+          { href: "/plan#income", label: "Income on Plan" },
+        ],
+      };
+    }),
     retireLabel,
     chips,
     warnings: r.warnings,

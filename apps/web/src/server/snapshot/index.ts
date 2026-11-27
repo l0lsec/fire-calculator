@@ -55,6 +55,8 @@ export interface HouseholdData {
   measuredIncome: MeasuredIncome | null;
   /** "measured" when the plan uses measuredIncome as take-home pay (see effectiveIncomeSource). */
   incomeSource: "measured" | "manual";
+  /** Everything measured from connected accounts, used or not (its transactions open the measured figures). */
+  measured: AnnualSpending | null;
 }
 
 export interface MeasuredIncome {
@@ -182,6 +184,7 @@ export async function loadHousehold(ctx: Ctx, asOf: string): Promise<HouseholdDa
     spendingSource: effectiveSpendingSource(spendingProfile, derivedSpending),
     measuredIncome,
     incomeSource: effectiveIncomeSource(income, measuredIncome),
+    measured: derived,
   };
 }
 

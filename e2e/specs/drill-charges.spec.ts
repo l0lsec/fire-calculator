@@ -85,4 +85,62 @@ test("bills, budgets, spending and safe to spend open the real charges behind ea
   const predicted = page.getByTestId("upcoming-charges").first();
   await expect(predicted).toBeVisible();
   await openAndSum(predicted);
+  const account = page.getByTestId("safe-account").first();
+  await account.getByTestId("account-low-drill").click();
+  await expect(account.getByTestId("account-low-total")).toContainText("Lowest point");
+  await expect(account).not.toContainText("does not add up");
+});
+
+/** Pick a chart's period from its menu and return the opened panel. */
+async function pick(page: Page, testId: string, index = 0): Promise<Locator> {
+  const select = page.getByTestId(`${testId}-drill-pick`);
+  const value = await select.locator("option:not([value=''])").nth(index).getAttribute("value");
+  await select.selectOption(value as string);
+  const panel = page.getByTestId(`${testId}-drill`).locator("section");
+  await expect(panel).toBeVisible();
+  await expect(panel).not.toContainText("does not add up");
+  return panel;
+}
+
+test("chart bars, history points and scenario figures open what they are made of", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const user = await createVerifiedUser();
+  await signInContext(context, user, baseURL as string);
+  await connect(page);
+
+  // Spending: a month's bar opens its essentials and discretionary charges.
+  await page.goto("/spending");
+  const month = await pick(page, "spending-monthly", 0);
+  await expect(month.getByTestId("month-total")).toBeVisible();
+  await month
+    .getByRole("button", { name: /^See the \d+ charges$/ })
+    .first()
+    .click();
+  await expect(month.getByTestId("charge-row").first()).toBeVisible();
+  // A category trend opens that category's latest month.
+  await page.getByTestId("category-trend").first().getByRole("button").click();
+  await expect(page.getByTestId("category-month-total")).toBeVisible();
+
+  // History: money in and out opens its deposits and charges.
+  await page.goto("/history");
+  const inOut = await pick(page, "history-in-out", 0);
+  await expect(inOut.getByTestId("inout-total")).toBeVisible();
+
+  // Plan: measured spending and pay open their transactions.
+  await page.goto("/plan");
+  await page.getByTestId("plan-income-drill").click();
+  await expect(page.getByTestId("income-monthly-total")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^See the \d+ deposits$/ }).first()).toBeVisible();
+
+  // Scenarios: a figure in the comparison opens how it is worked out (once the plan is set up).
+  await page.goto("/scenarios");
+  const figures = page.getByTestId("compare-table").getByRole("button", { name: /see how it is worked out/ });
+  if (await figures.count()) {
+    await figures.first().click();
+    await expect(page.locator('[data-testid^="breakdown-"]').first()).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("does not add up");
+  }
 });

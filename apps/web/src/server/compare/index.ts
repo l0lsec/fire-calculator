@@ -5,7 +5,7 @@ import usMonthly from "@fire/engine/data/us-monthly.json";
 import { type PlanResult, runPlan } from "@fire/engine/levels";
 import { horizonFor } from "@fire/engine/projection";
 import { type HistoricalSeries, historicalBacktest, monteCarlo } from "@fire/engine/risk";
-import { planForScenario, type SnapshotIssue } from "../snapshot";
+import { type HouseholdPlan, planForScenario, type SnapshotIssue } from "../snapshot";
 
 interface Ctx {
   db: Db;
@@ -37,11 +37,19 @@ export interface ScenarioSummary {
   /** Share of historical start years (1871 onward, 60/40) in which the plan's money lasts. */
   historicalSuccess: number | null;
   historicalStarts: number;
+  /** Simulated paths run and the ones in which the money lasted. */
+  simulated: { runs: number; successes: number } | null;
+  /** Historical start months whose money ran out. */
+  historicalFailures: string[];
+  /** Interest each debt costs over the plan (adds up to totalInterest). */
+  interestByDebt: { id: string; name: string; interest: number }[];
   startMonth: number | null;
 }
 
 export interface Comparison {
   summaries: ScenarioSummary[];
+  /** The plan behind each summary, same order (for the breakdowns). */
+  plans: HouseholdPlan[];
   /** Per scenario after the first: differences against the first (months, dollars, rate points). */
   deltas: {
     id: string;
@@ -79,6 +87,9 @@ export function summarize(
       successRate: null,
       historicalSuccess: null,
       historicalStarts: 0,
+      simulated: null,
+      historicalFailures: [],
+      interestByDebt: [],
       startMonth: null,
     };
   }
@@ -87,14 +98,15 @@ export function summarize(
       months[item.id as CompareLevel] = item.reachedK;
   }
   const runs = opts.mcRuns ?? 200;
-  const successRate =
+  const mc =
     runs > 0
       ? monteCarlo(input, { runs, seed: 20261125, ...(result.fiK !== null ? { retireAtK: result.fiK } : {}) })
-          .successRate
       : null;
+  const successRate = mc ? mc.successRate : null;
   // History replayed from every start year with enough data (horizon capped at 75 years).
   let historicalSuccess: number | null = null;
   let historicalStarts = 0;
+  let historicalFailures: string[] = [];
   if (result.fiK !== null) {
     const h = historicalBacktest(input, usMonthly as HistoricalSeries, {
       stockShare: 0.6,
@@ -103,7 +115,16 @@ export function summarize(
     });
     historicalSuccess = h.runs > 0 ? h.successRate : null;
     historicalStarts = h.runs;
+    historicalFailures = h.failures;
   }
+  const debt = result.accumulation.debt;
+  const interest = new Map<string, number>();
+  for (const m of debt.schedule)
+    for (const [id, x] of Object.entries(m.interest)) interest.set(id, (interest.get(id) ?? 0) + x);
+  const interestByDebt = input.debts
+    .map((d) => ({ id: d.id, name: d.name, interest: interest.get(d.id) ?? 0 }))
+    .filter((d) => d.interest > 0.005)
+    .sort((a, b) => b.interest - a.interest);
   return {
     id,
     name,
@@ -111,6 +132,9 @@ export function summarize(
     ready: true,
     historicalSuccess,
     historicalStarts,
+    simulated: mc ? { runs: mc.runs, successes: mc.successes } : null,
+    historicalFailures,
+    interestByDebt,
     issues,
     fiTarget: result.levels.fi,
     months,
@@ -145,13 +169,15 @@ export async function compareScenarios(
   opts: { mcRuns?: number } = {},
 ): Promise<Comparison> {
   const summaries: ScenarioSummary[] = [];
+  const plans: HouseholdPlan[] = [];
   for (const id of ids.slice(0, 4)) {
     const p = await planForScenario(ctx, id, asOf);
+    plans.push(p);
     summaries.push(
       summarize(p.scenario.id, p.scenario.name, p.scenario.isBaseline, p.input, p.result, p.issues, opts),
     );
   }
-  return { summaries, deltas: deltas(summaries) };
+  return { summaries, plans, deltas: deltas(summaries) };
 }
 
 export interface PrepayOutcome {

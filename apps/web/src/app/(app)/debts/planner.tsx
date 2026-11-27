@@ -6,7 +6,7 @@ import { compareStrategies, simulateDebts } from "@fire/engine/debt";
 import { useMemo, useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { StackedBars } from "@/components/charts/stacked-bars";
-import { paymentSplit } from "@/lib/chart-data";
+import { paymentSplit, paymentSplitBreakdowns } from "@/lib/chart-data";
 import { duration, monthName, usd } from "@/lib/format";
 import { saveDebtPlanAction } from "./actions";
 import { PayoffChart } from "./payoff-chart";
@@ -77,6 +77,16 @@ export function DebtPlanner({
   const maxExtra = Math.max(2000, Math.ceil((result.budget * 2) / 100) * 100);
   const best = recommend(comparison.results);
   const split = useMemo(() => paymentSplit(result.schedule, startMonth), [result.schedule, startMonth]);
+  // What each bar pays: every debt's interest and principal that period (law 19).
+  const splitDrill = useMemo(
+    () =>
+      paymentSplitBreakdowns(
+        result.schedule,
+        startMonth,
+        Object.fromEntries(debts.map((d) => [d.id, d.name])),
+      ),
+    [result.schedule, startMonth, debts],
+  );
 
   if (debts.length === 0) return <p className="text-sm text-ink-3">No debts with a known rate to plan.</p>;
 
@@ -183,6 +193,7 @@ export function DebtPlanner({
             ]}
             label={`Debt payments by ${split.per}, split into interest and principal`}
             totalLabel="Paid"
+            drill={splitDrill}
             testId="debt-payment-split"
           />
         </section>

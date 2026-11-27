@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
 import { ValueBars } from "@/components/charts/value-bars";
+import { DrillTable } from "@/components/drill-table";
 import { Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { scenarioBars } from "@/lib/chart-data";
 import { duration, monthName, pct, usd } from "@/lib/format";
 import { COMPARE_LEVELS, type CompareLevel, compareScenarios, investVsPrepay } from "@/server/compare";
+import { scenarioBreakdowns } from "@/server/compare/breakdowns";
 import { allScenarios } from "@/server/scenarios";
 import { planForScenario } from "@/server/snapshot";
 import { deleteScenarioAction } from "./actions";
@@ -42,6 +44,8 @@ export default async function ScenariosPage({
   const base = await planForScenario(ctx, baseline.id);
   const extra = Math.max(0, Math.min(100_000, Number(sp.extra ?? 500) || 500));
   const bars = scenarioBars(cmp.summaries);
+  // What every cell is made of: tap a figure to see how it is worked out (law 19).
+  const cells = cmp.summaries.map((s, i) => (cmp.plans[i] ? scenarioBreakdowns(cmp.plans[i]!, s) : {}));
   const prepay = base.input ? base.input.debts.map((d) => investVsPrepay(base.input!, d.id, extra)) : [];
 
   return (
@@ -125,83 +129,80 @@ export default async function ScenariosPage({
       ) : null}
 
       <Card title="Side by side">
-        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable table must be reachable by keyboard */}
-        <section className="overflow-x-auto" aria-label="Scenario comparison" tabIndex={0}>
-          <table className="w-full min-w-[560px] text-sm" data-testid="compare-table">
-            <thead>
-              <tr className="border-b border-line text-left text-xs text-ink-3">
-                <th className="py-2 font-medium">Milestone</th>
-                {cmp.summaries.map((s) => (
-                  <th key={s.id} className="py-2 font-medium">
-                    {s.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARE_LEVELS.map((l) => (
-                <tr key={l} className="border-b border-line">
-                  <td className="py-2">{LABEL[l]}</td>
-                  {cmp.summaries.map((s, i) => {
-                    const m = s.months[l];
-                    const d = i > 0 ? (cmp.deltas[i - 1]?.months[l] ?? null) : null;
-                    return (
-                      <td key={s.id} className="num py-2">
-                        {!s.ready
-                          ? "set up"
-                          : m === null
-                            ? "not within plan"
-                            : m === 0
-                              ? "reached"
-                              : monthName((s.startMonth ?? 0) + m)}
-                        {i > 0 && d !== null ? (
-                          <span className="ml-1 text-xs text-ink-3">({signedMonths(d)})</span>
-                        ) : null}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              <tr className="border-b border-line">
-                <td className="py-2">FI number</td>
-                {cmp.summaries.map((s) => (
-                  <td key={s.id} className="num py-2">
-                    {s.fiTarget === null ? "" : usd(s.fiTarget)}
-                  </td>
-                ))}
-              </tr>
-              <tr className="border-b border-line">
-                <td className="py-2">Debt interest</td>
-                {cmp.summaries.map((s) => (
-                  <td key={s.id} className="num py-2">
-                    {s.totalInterest === null ? "" : usd(s.totalInterest)}
-                  </td>
-                ))}
-              </tr>
-              <tr className="border-b border-line">
-                <td className="py-2">Retirement success (history since 1871)</td>
-                {cmp.summaries.map((s) => (
-                  <td key={s.id} className="num py-2" data-testid="historical-success">
+        <DrillTable
+          caption="Scenario comparison"
+          firstColumn="Milestone"
+          columns={cmp.summaries.map((s) => s.name)}
+          testId="compare-table"
+          rows={[
+            ...COMPARE_LEVELS.map((l) => ({
+              label: LABEL[l],
+              cells: cmp.summaries.map((s, i) => {
+                const m = s.months[l];
+                const d = i > 0 ? (cmp.deltas[i - 1]?.months[l] ?? null) : null;
+                return {
+                  breakdown: cells[i]?.[l] ?? null,
+                  content: (
+                    <>
+                      {!s.ready
+                        ? "set up"
+                        : m === null
+                          ? "not within plan"
+                          : m === 0
+                            ? "reached"
+                            : monthName((s.startMonth ?? 0) + m)}
+                      {i > 0 && d !== null ? (
+                        <span className="ml-1 text-xs text-ink-3">({signedMonths(d)})</span>
+                      ) : null}
+                    </>
+                  ),
+                };
+              }),
+            })),
+            {
+              label: "FI number",
+              cells: cmp.summaries.map((s, i) => ({
+                breakdown: cells[i]?.["fi-number"] ?? null,
+                content: s.fiTarget === null ? "" : usd(s.fiTarget),
+              })),
+            },
+            {
+              label: "Debt interest",
+              cells: cmp.summaries.map((s, i) => ({
+                breakdown: cells[i]?.interest ?? null,
+                content: s.totalInterest === null ? "" : usd(s.totalInterest),
+              })),
+            },
+            {
+              label: "Retirement success (history since 1871)",
+              cells: cmp.summaries.map((s, i) => ({
+                breakdown: cells[i]?.historical ?? null,
+                content: (
+                  <span data-testid="historical-success">
                     {s.historicalSuccess === null
                       ? ""
                       : `${pct(s.historicalSuccess, 0)} of ${s.historicalStarts} start years`}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="py-2">Retirement success (simulated)</td>
-                {cmp.summaries.map((s) => (
-                  <td key={s.id} className="num py-2" data-testid="success-rate">
+                  </span>
+                ),
+              })),
+            },
+            {
+              label: "Retirement success (simulated)",
+              cells: cmp.summaries.map((s, i) => ({
+                breakdown: cells[i]?.simulated ?? null,
+                content: (
+                  <span data-testid="success-rate">
                     {s.successRate === null ? "" : pct(s.successRate, 0)}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </section>
+                  </span>
+                ),
+              })),
+            },
+          ]}
+        />
         <p className="mt-2 text-xs text-ink-3">
-          Success is the share of 200 simulated market paths (15% yearly volatility around your return
-          assumption) in which the money lasts, retiring at each plan&apos;s FI date.
+          Tap any figure to see how it is worked out. Success is the share of 200 simulated market paths (15%
+          yearly volatility around your return assumption) in which the money lasts, retiring at each
+          plan&apos;s FI date.
         </p>
       </Card>
 

@@ -14,6 +14,7 @@ import { type Breakdown, evaluateStep } from "../src/lib/breakdown";
 import { chargesTotal } from "../src/lib/charges";
 import { chargeFinder, isLiving } from "../src/server/charges";
 import {
+  accountLowBreakdown,
   billsBreakdowns,
   budgetBreakdown,
   monthlyMath,
@@ -248,5 +249,14 @@ describe("Safe to spend breakdown", () => {
     expect(rent?.op).toBe("-");
     expect(rent?.charges?.length).toBe(4);
     expect(rent?.chargesIn).toBe(false);
+  });
+
+  it("opens each account's own lowest point, from its balance through its own bills", () => {
+    for (const f of cash.accounts) {
+      const a = accountLowBreakdown(f, "Checking ...1234", (ids) => find.byIds(ids));
+      expectAddsUp(a);
+      expect(a.steps[0]?.total.value).toBeCloseTo(f.low.cents / 100, 2);
+      expect(a.steps[0]?.lines.some((l) => (l.charges?.length ?? 0) > 0)).toBe(true);
+    }
   });
 });

@@ -2,7 +2,8 @@
 // safe for client and server, so unit tests can prove each chart's numbers add up
 // to the figures the rest of the app shows. Amounts come in as cents (spending,
 // balances) or dollars (engine results) and always leave as dollars.
-import { duration, monthName } from "./format";
+import type { Breakdown } from "./breakdown";
+import { duration, monthName, usd } from "./format";
 
 const SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -274,4 +275,55 @@ export function paymentSplit(
       principal: round(y.principal),
     })),
   };
+}
+
+/**
+ * What each bar of paymentSplit is made of: every debt's interest and principal in
+ * that month (or year), so tapping a bar shows which debts it pays (law 19).
+ */
+export function paymentSplitBreakdowns(
+  schedule: (DebtMonthLike & { interest: Record<string, number>; payments: Record<string, number> })[],
+  startMonth: number,
+  names: Record<string, string>,
+  monthlyUpTo = 36,
+): Breakdown[] {
+  const byYear = schedule.length > monthlyUpTo;
+  const periods = new Map<string, { interest: Map<string, number>; principal: Map<string, number> }>();
+  for (const r of schedule) {
+    const key = byYear ? String(Math.floor((startMonth + r.k) / 12)) : monthName(startMonth + r.k);
+    const p = periods.get(key) ?? { interest: new Map(), principal: new Map() };
+    for (const [id, paid] of Object.entries(r.payments)) {
+      const i = r.interest[id] ?? 0;
+      p.interest.set(id, (p.interest.get(id) ?? 0) + i);
+      p.principal.set(id, (p.principal.get(id) ?? 0) + Math.max(0, paid - i));
+    }
+    periods.set(key, p);
+  }
+  const lines = (m: Map<string, number>) => {
+    const out = [...m]
+      .filter(([, v]) => v > 0.005)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, v]) => ({ op: "+" as const, label: names[id] ?? "A debt", value: v }));
+    return out.length ? out : [{ op: "+" as const, label: "None", value: 0 }];
+  };
+  const sum = (m: Map<string, number>) => [...m.values()].reduce((s, v) => s + v, 0);
+  return [...periods].map(([label, p]) => ({
+    id: `debt-split-${label}`,
+    title: label,
+    intro: `Each debt's payment in ${label}, split into the interest it costs and the principal that pays the balance down.`,
+    steps: [
+      {
+        title: "Interest",
+        lines: lines(p.interest),
+        total: { label: "Interest", value: sum(p.interest), testId: "split-interest-total" },
+      },
+      {
+        title: "Principal",
+        lines: lines(p.principal),
+        total: { label: "Principal", value: sum(p.principal), testId: "split-principal-total" },
+      },
+    ],
+    facts: [{ label: "Paid in all", value: usd(sum(p.interest) + sum(p.principal)) }],
+    links: [],
+  }));
 }

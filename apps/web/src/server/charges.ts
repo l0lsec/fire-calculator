@@ -16,9 +16,15 @@ const order = (a: Charge, b: Charge) => b.date.localeCompare(a.date) || b.amount
 export function chargeFinder(classified: Classified[], accounts: AccountName[]) {
   const names = new Map(accounts.map((a) => [a.id, `${a.name}${a.mask ? ` ...${a.mask}` : ""}`]));
   const byId = new Map(classified.map((c) => [c.tx.id, c]));
+  // One object per transaction and amount, so a charge listed under several
+  // figures on a page is sent to the browser once (React dedupes repeated objects).
+  const made = new Map<string, Charge>();
   const toCharge = (c: Classified, counted: boolean): Charge => {
     const cents = counted ? c.countedCents : c.tx.amountCents;
-    return {
+    const key = `${c.tx.id}:${cents}`;
+    const seen = made.get(key);
+    if (seen) return seen;
+    const charge: Charge = {
       id: c.tx.id,
       date: c.tx.date,
       name: c.tx.name,
@@ -28,6 +34,8 @@ export function chargeFinder(classified: Classified[], accounts: AccountName[]) 
         ? { note: `${usdCents(c.tx.amountCents, { cents: true })} charge; ${c.reason}` }
         : {}),
     };
+    made.set(key, charge);
+    return charge;
   };
   return {
     /** These transactions at their full amounts (a recurring series' charges). */

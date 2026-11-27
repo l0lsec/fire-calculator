@@ -1,7 +1,7 @@
 // What each Bills-page total is made of: the series that add up to it, each with
 // the arithmetic that turns its typical charge into a monthly figure.
-import type { CashForecast, RecurringSeries } from "@fire/spending";
-import { type Breakdown, type BreakdownLine, foldSlices } from "@/lib/breakdown";
+import type { AccountForecast, CashFlowItem, CashForecast, RecurringSeries } from "@fire/spending";
+import { type Breakdown, type BreakdownLine, type BreakdownStep, foldSlices } from "@/lib/breakdown";
 import type { Charge } from "@/lib/charges";
 import { usdCents } from "@/lib/format";
 
@@ -243,6 +243,73 @@ const shortDate = (iso: string) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 /**
+ * From the balance now to the lowest point: every scheduled item before the low
+ * day, and that day's money out (the low is after a day's money out and before
+ * its money in). Each predicted item opens the past charges it came from.
+ */
+function lowPointStep(
+  start: { name: string; cents: number }[],
+  items: CashFlowItem[],
+  low: { date: string; cents: number },
+  chargesFor: (ids: string[]) => Charge[],
+  testId: string,
+): BreakdownStep {
+  const d = (cents: number) => cents / 100;
+  const before = items.filter((i) => i.date < low.date || (i.date === low.date && i.deltaCents < 0));
+  return {
+    title: `Your lowest point, ${shortDate(low.date)}`,
+    lines: [
+      ...start.map((a) => ({
+        op: "+" as const,
+        label: a.name,
+        value: d(a.cents),
+        detail: "available balance now",
+      })),
+      ...before.map((i) => {
+        const charges = chargesFor(i.sourceIds);
+        return {
+          op: i.deltaCents < 0 ? ("-" as const) : ("+" as const),
+          label: `${i.name}, ${shortDate(i.date)}`,
+          value: Math.abs(d(i.deltaCents)),
+          detail: i.scheduledId
+            ? "a bill you added"
+            : i.late
+              ? "was due earlier, so counted today"
+              : charges.length
+                ? `predicted from ${charges.length} past ${i.deltaCents < 0 ? "charges" : "deposits"}`
+                : undefined,
+          ...(charges.length ? { charges, chargesIn: i.deltaCents > 0 } : {}),
+        };
+      }),
+    ],
+    total: { label: `Lowest point, ${shortDate(low.date)}`, value: d(low.cents), testId },
+  };
+}
+
+/** One account's lowest point in the forecast: its balance now and its own bills and deposits. */
+export function accountLowBreakdown(
+  f: AccountForecast,
+  accountName: string,
+  chargesFor: (ids: string[]) => Charge[],
+): Breakdown {
+  return {
+    id: `low-${f.account.id}`,
+    title: `${accountName}, lowest point`,
+    intro: `This account's balance now, then each bill and deposit predicted for it in date order, up to its lowest day. Day-to-day spending is not in it${f.role === "business" ? ", and business income that does not arrive on a schedule is not counted, so this is the worst case" : ""}.`,
+    steps: [
+      lowPointStep(
+        [{ name: accountName, cents: f.startCents }],
+        f.items,
+        f.low,
+        chargesFor,
+        "account-low-total",
+      ),
+    ],
+    links: [{ href: "#coming-up", label: "Every bill and paycheck, below" }],
+  };
+}
+
+/**
  * Safe to spend, step by step: the spending accounts' balance now, every item
  * up to the lowest day, the cushion, and the daily allowance to payday. Each
  * predicted bill or paycheck opens the past charges it was predicted from.
@@ -256,10 +323,6 @@ export function safeBreakdown(
   if (!sp) return null;
   const d = (cents: number) => cents / 100;
   const pool = cash.accounts.filter((f) => f.role === "spending");
-  // The low point is a day's balance after its money out and before its money in.
-  const before = cash.upcoming.filter(
-    (i) => i.date < sp.low.date || (i.date === sp.low.date && i.deltaCents < 0),
-  );
   const days = Math.max(1, sp.daysToPayday);
   const paced = sp.perDayCents * days;
   return {
@@ -268,38 +331,13 @@ export function safeBreakdown(
     intro:
       "Your spending accounts' balance now, then every bill and paycheck in date order up to the lowest day, less the cushion you keep. The amount is then spread over the days to payday so the bills after it are covered too.",
     steps: [
-      {
-        title: `Your lowest point, ${shortDate(sp.low.date)}`,
-        lines: [
-          ...pool.map((f) => ({
-            op: "+" as const,
-            label: accountName(f.account.id),
-            value: d(f.startCents),
-            detail: "available balance now",
-          })),
-          ...before.map((i) => {
-            const charges = chargesFor(i.sourceIds);
-            return {
-              op: i.deltaCents < 0 ? ("-" as const) : ("+" as const),
-              label: `${i.name}, ${shortDate(i.date)}`,
-              value: Math.abs(d(i.deltaCents)),
-              detail: i.scheduledId
-                ? "a bill you added"
-                : i.late
-                  ? "was due earlier, so counted today"
-                  : charges.length
-                    ? `predicted from ${charges.length} past ${i.deltaCents < 0 ? "charges" : "deposits"}`
-                    : undefined,
-              ...(charges.length ? { charges, chargesIn: i.deltaCents > 0 } : {}),
-            };
-          }),
-        ],
-        total: {
-          label: `Lowest point, ${shortDate(sp.low.date)}`,
-          value: d(sp.low.cents),
-          testId: "safe-low-total",
-        },
-      },
+      lowPointStep(
+        pool.map((f) => ({ name: accountName(f.account.id), cents: f.startCents })),
+        cash.upcoming,
+        sp.low,
+        chargesFor,
+        "safe-low-total",
+      ),
       {
         title: "Most that could go out today",
         lines: [

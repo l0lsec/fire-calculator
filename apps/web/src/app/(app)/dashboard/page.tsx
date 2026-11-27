@@ -376,6 +376,7 @@ export default async function DashboardPage({
                 ]}
                 label="Income by month for the next 12 months, split into saved, living spending and debt interest"
                 totalLabel="Income"
+                drill={m.incomeByMonthDrill}
                 testId="income-by-month"
               />
               <p className="mt-2 text-xs text-ink-3">

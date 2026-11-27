@@ -10,6 +10,7 @@ import { requireContext } from "@/lib/auth/context";
 import { categoryTrends, spendingSplitByMonth } from "@/lib/chart-data";
 import { dateText, usdCents } from "@/lib/format";
 import { isLiving } from "@/server/charges";
+import { categoryMonthBreakdowns, spendingMonthBreakdowns } from "@/server/charts/breakdowns";
 import { effectiveSpendingSource, todayISO } from "@/server/snapshot";
 import { categoryLabel, FLAG_TEXT, spendingBreakdowns, spendingView } from "@/server/spending";
 import {
@@ -45,6 +46,9 @@ export default async function SpendingPage() {
     ? withSpending.reduce((v, m) => v + m.livingCents, 0) / withSpending.length / 100
     : 0;
   const trends = categoryTrends(s.classified, months, categoryLabel, 6);
+  // What each bar is made of: tapping a month opens its charges (law 19).
+  const monthDrill = spendingMonthBreakdowns(s, charges);
+  const trendDrill = categoryMonthBreakdowns(trends, months, charges);
 
   if (!connected) {
     return (
@@ -140,6 +144,7 @@ export default async function SpendingPage() {
             label={`Living spending by month, essentials and discretionary; average ${usdCents(averageMonth * 100)} a month`}
             totalLabel="Spent"
             average={{ value: averageMonth, label: "your average month with spending" }}
+            drill={monthDrill}
             testId="spending-monthly"
           />
         </Card>
@@ -307,7 +312,7 @@ export default async function SpendingPage() {
 
       {trends.length > 1 ? (
         <Card title="Category trends">
-          <CategoryTrends trends={trends} testId="spending-category-trends" />
+          <CategoryTrends trends={trends} drill={trendDrill} testId="spending-category-trends" />
         </Card>
       ) : null}
 

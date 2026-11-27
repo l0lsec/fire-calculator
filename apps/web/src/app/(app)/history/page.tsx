@@ -3,7 +3,8 @@ import { Card } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { moneyInOut } from "@/lib/chart-data";
 import { dateText, usd } from "@/lib/format";
-import { balanceHistoryRange } from "@/server/export";
+import { inOutMonthBreakdowns } from "@/server/charts/breakdowns";
+import { balanceHistoryDetail } from "@/server/export";
 import { todayISO } from "@/server/snapshot";
 import { spendingView } from "@/server/spending";
 import { ExportLink } from "./export-link";
@@ -12,8 +13,8 @@ export const metadata = { title: "History | FIRE Planner" };
 
 export default async function HistoryPage() {
   const ctx = await requireContext();
-  const [points, { s, connected }] = await Promise.all([
-    balanceHistoryRange(ctx, "1900-01-01", "2999-12-31"),
+  const [{ points, days }, { s, connected, charges }] = await Promise.all([
+    balanceHistoryDetail(ctx, "1900-01-01", "2999-12-31"),
     spendingView(ctx, todayISO()),
   ]);
   const data = points.map((p) => ({
@@ -31,6 +32,7 @@ export default async function HistoryPage() {
     : [];
   const months = inOut.filter((m) => m.income !== 0 || m.spending !== 0);
   const kept = months.reduce((v, m) => v + m.income - m.spending, 0);
+  const inOutDrill = connected ? inOutMonthBreakdowns(s, charges) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -54,6 +56,8 @@ export default async function HistoryPage() {
               ]}
               label="Net worth and money counted toward FI over time"
               xLabel="Date"
+              drill={days}
+              drillNoun="day"
               testId="history-balances"
             />
             <p className="num mt-2 text-sm text-ink-3">
@@ -77,6 +81,7 @@ export default async function HistoryPage() {
             ]}
             label="Income and living spending by month"
             xLabel="Month"
+            drill={inOutDrill}
             testId="history-in-out"
           />
           <p className="num mt-2 text-sm text-ink-3">

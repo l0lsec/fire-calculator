@@ -13,8 +13,10 @@ import {
   foldSlices,
   type NotCounted,
 } from "@/lib/breakdown";
+import type { Charge } from "@/lib/charges";
 import { age, dateText, monthName, pct, usd } from "@/lib/format";
 import { BUCKET_LABELS } from "../accounts/labels";
+import { chargeFinder, isLiving } from "../charges";
 import { type HouseholdPlan, MEASURED_INCOME_ID } from "../snapshot";
 import { categoryLabel } from "../spending";
 
@@ -46,17 +48,77 @@ const sub = (label: string, value: number, detail?: string, testId?: string): Br
 const signed = (label: string, value: number, detail?: string): BreakdownLine =>
   value < 0 ? sub(label, -value, detail) : add(label, value, detail);
 
+/** The transactions behind the measured figures, so their lines open them (law 19). */
+interface Measured {
+  living: Charge[];
+  essential: Charge[];
+  income: Charge[];
+  /** Months of history the measured figures come from (they are annualized below 12). */
+  months: number;
+}
+
 interface Parts {
   plan: HouseholdPlan;
   input: EngineInput;
   result: PlanResult;
   row0: MonthRow;
+  measured: Measured | null;
+}
+
+function measuredCharges(plan: HouseholdPlan): Measured | null {
+  const m = plan.data.measured;
+  if (!m) return null;
+  const find = chargeFinder(m.classified, plan.data.accounts);
+  return {
+    living: find.where(isLiving, { counted: true }),
+    essential: find.where((c) => isLiving(c) && c.essential, { counted: true }),
+    income: find.where((c) => c.class === "income"),
+    months: m.monthsOfData,
+  };
 }
 
 function parts(plan: HouseholdPlan): Parts | null {
   if (!plan.input || !plan.result) return null;
   const row0 = plan.result.accumulation.rows[0];
-  return row0 ? { plan, input: plan.input, result: plan.result, row0 } : null;
+  return row0
+    ? { plan, input: plan.input, result: plan.result, row0, measured: measuredCharges(plan) }
+    : null;
+}
+
+/** "the 1,204 charges below × 12 ÷ 9 months" when the history is short. */
+const annualized = (m: Measured) =>
+  m.months > 0 && m.months < 12 ? `; the charges below cover ${m.months} months, × 12 ÷ ${m.months}` : "";
+
+/** A measured spending line opens the charges it was measured from (only when the plan uses them). */
+function withSpendingCharges(
+  line: BreakdownLine,
+  p: Parts,
+  essential: boolean,
+  projected = false,
+): BreakdownLine {
+  const m = p.measured;
+  if (!m || p.plan.data.spendingSource !== "plaid" || overridden(p.plan)) return line;
+  const charges = essential ? m.essential : m.living;
+  if (!charges.length) return line;
+  return {
+    ...line,
+    detail: projected
+      ? `${line.detail ?? ""}; projected from the charges below, with inflation`
+      : `${line.detail ?? ""}${annualized(m)}`,
+    charges,
+  };
+}
+
+/** Measured take-home pay opens the deposits it was measured from. */
+function withIncomeCharges(line: BreakdownLine, p: Parts): BreakdownLine {
+  const m = p.measured;
+  if (!m || !m.income.length) return line;
+  return {
+    ...line,
+    detail: `${line.detail ?? ""}; projected from the deposits below${annualized(m)}`,
+    charges: m.income,
+    chargesIn: true,
+  };
 }
 
 const overridden = (plan: HouseholdPlan) =>
@@ -73,7 +135,7 @@ function spendingDetail(plan: HouseholdPlan): string {
 
 export interface FirstYear {
   months: number;
-  income: { label: string; value: number; detail: string }[];
+  income: { id: string; label: string; value: number; detail: string }[];
   contributions: { label: string; value: number; detail: string }[];
   living: number;
   escrow: number;
@@ -109,6 +171,7 @@ export function firstYear(p: Parts): FirstYear {
     );
   const income = input.income
     .map((s) => ({
+      id: s.id,
       label: s.name,
       value: sumOver((k) => flowsAt({ ...input, income: [s], contributions: [] }, k, false).income),
       detail:
@@ -165,7 +228,10 @@ function savingsRateBreakdown(p: Parts, y: FirstYear): Breakdown {
     {
       title: `Coming in, next ${y.months} months`,
       lines: [
-        ...y.income.map((l, i) => add(l.label, l.value, l.detail, i === 0 ? "sr-income" : undefined)),
+        ...y.income.map((l, i) => {
+          const line = add(l.label, l.value, l.detail, i === 0 ? "sr-income" : undefined);
+          return l.id === MEASURED_INCOME_ID ? withIncomeCharges(line, p) : line;
+        }),
         ...y.contributions.map((l) => add(l.label, l.value, l.detail)),
       ],
       total: { label: "Income", value: y.gross, testId: "sr-gross" },
@@ -174,7 +240,12 @@ function savingsRateBreakdown(p: Parts, y: FirstYear): Breakdown {
       title: "Going out",
       lines: [
         add("Income", y.gross),
-        sub("Living spending", y.living, spendingDetail(p.plan), "sr-spending"),
+        withSpendingCharges(
+          sub("Living spending", y.living, spendingDetail(p.plan), "sr-spending"),
+          p,
+          false,
+          true,
+        ),
         ...(y.escrow > 0.005 ? [sub("Mortgage escrow", y.escrow, "property tax and insurance")] : []),
         ...(y.interest > 0.005
           ? [sub("Interest on debts", y.interest, "principal you pay down counts as saving")]
@@ -356,7 +427,11 @@ function spendingBreakdown(p: Parts): Breakdown {
     steps: [
       {
         lines: [
-          add("Living spending", input.spending.currentAnnual, spendingDetail(plan), "sp-living"),
+          withSpendingCharges(
+            add("Living spending", input.spending.currentAnnual, spendingDetail(plan), "sp-living"),
+            p,
+            false,
+          ),
           ...input.debts
             .filter((x) => x.escrowMonthly > 0)
             .map((x) => add(`Escrow on ${x.name}`, x.escrowMonthly * 12, "property tax and insurance")),
@@ -398,10 +473,14 @@ function spendingLines(p: Parts, need: Need): { lines: BreakdownLine[]; total: n
   }
   const essential = need === "essential";
   const lines: BreakdownLine[] = [
-    add(
-      essential ? "Essential spending" : "Living spending",
-      essential ? input.spending.currentEssentialAnnual : input.spending.currentAnnual,
-      spendingDetail(p.plan),
+    withSpendingCharges(
+      add(
+        essential ? "Essential spending" : "Living spending",
+        essential ? input.spending.currentEssentialAnnual : input.spending.currentAnnual,
+        spendingDetail(p.plan),
+      ),
+      p,
+      essential,
     ),
     ...(escrow > 0 ? [add("Mortgage escrow", escrow, "continues after the loan is paid off")] : []),
     ...adj

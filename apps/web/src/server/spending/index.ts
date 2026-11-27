@@ -16,7 +16,7 @@ import {
   setSpendingProfile,
   updateAccount,
 } from "@fire/db";
-import type { AnnualSpending } from "@fire/spending";
+import { type AnnualSpending, incomeSourceName } from "@fire/spending";
 import { z } from "zod";
 import { type Breakdown, type BreakdownLine, foldSlices } from "@/lib/breakdown";
 import { dateText } from "@/lib/format";
@@ -364,5 +364,83 @@ export function spendingBreakdowns(
       facts: [measured],
       links: [toCategories],
     },
+  };
+}
+
+/**
+ * Take-home pay measured from your accounts: each payer's deposits over the
+ * window, annualized when the history is short, then per month (law 19).
+ */
+export function measuredIncomeBreakdown(
+  s: AnnualSpending,
+  find: ChargeFinder,
+  accounts: { id: string; business: boolean }[],
+): Breakdown {
+  const business = new Set(accounts.filter((a) => a.business).map((a) => a.id));
+  const groups = new Map<string, { label: string; business: boolean; ids: string[] }>();
+  for (const c of s.classified) {
+    if (c.class !== "income") continue;
+    const b = business.has(c.tx.accountId);
+    const label = incomeSourceName(c.tx);
+    const key = `${b ? "b" : "p"}:${label}`;
+    const g = groups.get(key) ?? { label, business: b, ids: [] };
+    g.ids.push(c.tx.id);
+    groups.set(key, g);
+  }
+  const lines: BreakdownLine[] = [...groups.values()]
+    .map((g) => {
+      const charges = find.byIds(g.ids);
+      return {
+        op: "+" as const,
+        label: g.label,
+        value: -charges.reduce((v, x) => v + x.amountCents, 0) / 100,
+        ...(g.business ? { detail: "into a business account" } : {}),
+        charges,
+        chargesIn: true,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+  const raw = lines.reduce((v, l) => v + l.value, 0);
+  const scaled = s.monthsOfData > 0 && s.monthsOfData < 12;
+  const annual = s.incomeCents / 100;
+  return {
+    id: "measured-income",
+    title: "Take-home pay measured",
+    intro:
+      "Every deposit counted as income in your connected accounts: pay, business income and other money in. Transfers between your own accounts, refunds and loan money are not income.",
+    steps: [
+      {
+        title: `Deposits, ${dateText(s.windowStart)} to ${dateText(s.windowEnd)}`,
+        lines: lines.length ? lines : [{ op: "+", label: "No income found", value: 0 }],
+        total: { label: "Counted as income", value: raw, testId: "income-raw-total" },
+      },
+      ...(scaled
+        ? [
+            {
+              title: "A full year",
+              lines: [
+                { op: "+" as const, label: "Counted as income", value: raw },
+                { op: "×" as const, label: "Months in a year", value: 12, format: "number" as const },
+                {
+                  op: "÷" as const,
+                  label: "Months of history",
+                  value: s.monthsOfData,
+                  format: "number" as const,
+                },
+              ],
+              total: { label: "Per year", value: annual },
+            },
+          ]
+        : []),
+      {
+        title: "Per month",
+        lines: [
+          { op: "+", label: "Per year", value: annual },
+          { op: "÷", label: "Months in a year", value: 12, format: "number" },
+        ],
+        total: { label: "Take-home pay per month", value: annual / 12, testId: "income-monthly-total" },
+      },
+    ],
+    links: [{ href: "/spending", label: "Spending" }],
   };
 }

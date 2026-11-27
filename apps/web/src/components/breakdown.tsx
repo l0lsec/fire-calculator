@@ -292,7 +292,16 @@ export function DrillRow({
 }
 
 /** A summary figure that is not a tile (a page headline): the same breakdown, opened under it. */
-export function DrillButton({ breakdown, testId }: { breakdown: Breakdown; testId?: string }) {
+export function DrillButton({
+  breakdown,
+  testId,
+  label = "See how it adds up",
+}: {
+  breakdown: Breakdown;
+  testId?: string;
+  /** Button text when closed. */
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const button = useRef<HTMLButtonElement>(null);
@@ -307,7 +316,7 @@ export function DrillButton({ breakdown, testId }: { breakdown: Breakdown; testI
         data-testid={testId}
         className="inline-flex min-h-10 items-center gap-1 self-start rounded-lg px-2 -ml-2 text-sm font-medium text-accent hover:bg-surface-2 pointer-coarse:min-h-11"
       >
-        {open ? "Hide the breakdown" : "See how it adds up"}
+        {open ? "Hide the breakdown" : label}
         <Chevron open={open} />
       </button>
       {open ? (

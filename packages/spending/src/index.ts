@@ -340,7 +340,12 @@ const REVERSAL = /\bRETURN(ED)?\b|\bREVERS|\bREFUND|\bCHARGEBACK|\bADJUSTMENT\b/
 export const PAYROLL_CATEGORY = "BUSINESS_PAYROLL";
 
 /** A short source name for a deposit: "CliftonLarso-OSV DES:PAYROLL464 ..." becomes "CliftonLarso-OSV". */
-function sourceName(t: SpendingTx): string {
+/** Who paid an income deposit ("ACME CORP" from "ACME CORP DES:PAYROLL ..."), as incomeSources names it. */
+export function incomeSourceName(t: Pick<SpendingTx, "merchant" | "name">): string {
+  return sourceName(t);
+}
+
+function sourceName(t: Pick<SpendingTx, "merchant" | "name">): string {
   if (t.merchant) return t.merchant;
   const head = t.name.split(/\s+(?:DES|ID|INDN|CO ID|PPD|WEB):/)[0]?.trim() || t.name;
   return head
