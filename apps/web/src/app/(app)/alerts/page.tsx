@@ -42,7 +42,7 @@ export default async function AlertsPage() {
                           a.title
                         )}
                       </p>
-                      <p className="text-xs opacity-80">{a.detail}</p>
+                      <p className="text-xs">{a.detail}</p>
                     </div>
                     <ButtonForm
                       action={dismissAlertAction}

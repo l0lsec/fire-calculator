@@ -1,7 +1,7 @@
 // Alerts: what changed that is worth a look. Pure, and keyed so a dismissal
 // or a notification is remembered per event (a new price, a new month).
 import type { BudgetLine } from "./budgets";
-import type { CashForecast } from "./cashflow";
+import { BUSINESS_COVER_DAYS, type CashForecast, type TransferSuggestion } from "./cashflow";
 import type { Classified } from "./index";
 import type { RecurringSeries } from "./recurring";
 
@@ -14,6 +14,7 @@ export type AlertKind =
   | "low-balance"
   | "bill-due"
   | "overdraft-risk"
+  | "move-not-seen"
   | "spending-pace";
 
 export interface Alert {
@@ -47,6 +48,25 @@ const usd = (cents: number) =>
     currency: "USD",
     maximumFractionDigits: cents % 100 ? 2 : 0,
   });
+
+/** The plan in words: each move, the date, the fees it avoids and anything still short. */
+export function planText(moves: TransferSuggestion[], nameOf: (id: string) => string, asOf: string): string {
+  const first = moves[0];
+  if (!first) return " No account can spare the money, so hold off on spending from it until money comes in.";
+  const parts = moves.map((m) => `${usd(m.cents)} from ${nameOf(m.fromAccountId)}`);
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
+  const fees = moves.reduce((s, m) => s + m.feesAvoidedCents, 0);
+  return (
+    ` Move ${list} ${first.byDate <= asOf ? "today" : `by ${shortDate(first.byDate)}`}${fees > 0 ? ` to avoid about ${usd(fees)} in fees` : ""}.` +
+    (first.uncoveredCents > 0
+      ? ` That still leaves it ${usd(first.uncoveredCents)} short, so hold off on spending from it.`
+      : "")
+  );
+}
+
+function isoDay(n: number): string {
+  return new Date(n * 86_400_000).toISOString().slice(0, 10);
+}
 
 function day(d: string): number {
   return Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86_400_000;
@@ -195,10 +215,14 @@ export function buildAlerts(opts: {
   const cash = opts.cash;
   if (cash) {
     const names = new Map(cash.accounts.map((f) => [f.account.id, f.account.name]));
+    const nameOf = (id: string) => names.get(id) ?? "another account";
     for (const f of cash.accounts) {
-      if (f.role !== "spending" || !f.shortfall) continue;
+      if (f.role === "savings" || !f.shortfall) continue;
       const s = f.shortfall;
-      const move = cash.transfers.find((t) => t.toAccountId === f.account.id);
+      const business = f.role === "business";
+      // A business forecast leaves out income that does not arrive on a schedule, so only a
+      // shortfall within the week its plan covers is worth a warning.
+      if (business && day(s.date) - day(asOf) >= BUSINESS_COVER_DAYS) continue;
       out.push({
         // Keyed by week, so a forecast that shifts a day does not alert again.
         key: `overdraft:${f.account.id}:${weekOf(s.date)}`,
@@ -206,14 +230,38 @@ export function buildAlerts(opts: {
         severity: "bad",
         title: `Overdraft risk: ${f.account.name} on ${shortDate(s.date)}`,
         detail:
-          `Bills due before money comes in take it to ${usd(s.cents)}` +
+          (business
+            ? `Its bills take it to ${usd(s.cents)}`
+            : `Bills due before money comes in take it to ${usd(s.cents)}`) +
           `${s.cause ? ` (${s.cause} on ${shortDate(s.date)})` : ""}` +
-          `${s.worstCents < s.cents ? `, and to ${usd(s.worstCents)} by ${shortDate(s.worstDate)}` : ""}.` +
-          (move
-            ? ` Move ${usd(move.cents)} from ${names.get(move.fromAccountId) ?? "another account"} by ${shortDate(move.byDate)}${move.feesAvoidedCents > 0 ? ` to avoid about ${usd(move.feesAvoidedCents)} in fees` : ""}.`
-            : " Hold off on spending from it until then."),
+          (!business && s.worstCents < s.cents
+            ? `, and to ${usd(s.worstCents)} by ${shortDate(s.worstDate)}`
+            : "") +
+          "." +
+          planText(
+            cash.transfers.filter((t) => t.toAccountId === f.account.id),
+            nameOf,
+            asOf,
+          ),
         date: s.date,
         amountCents: s.worstCents,
+      });
+    }
+
+    // A move the user marked as made that has not shown up two days after its date: if it did
+    // not happen, the forecast is hiding a shortfall.
+    for (const m of cash.moves) {
+      if (!m.counted || m.seenTxId || day(asOf) - day(m.date) < 2) continue;
+      out.push({
+        key: `move-not-seen:${m.id}`,
+        kind: "move-not-seen",
+        severity: "warn",
+        title: `${usd(m.cents)} move to ${nameOf(m.toAccountId)} not seen yet`,
+        detail:
+          `You marked it moved from ${nameOf(m.fromAccountId)} for ${shortDate(m.date)}, but no deposit of about that amount has shown up. ` +
+          `The forecast counts it until ${shortDate(isoDay(day(m.date) + 7))}; if it did not happen, remove it on Safe to spend.`,
+        date: m.date,
+        amountCents: m.cents,
       });
     }
     const sp = cash.spendable;

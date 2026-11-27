@@ -563,7 +563,7 @@ describe("moving money to avoid overdrafts", () => {
       date: "2026-11-30",
       deltaCents: 80_000,
     });
-    expect(waiting.moves).toEqual([{ id: "m1", seenTxId: null, counted: true }]);
+    expect(waiting.moves).toEqual([{ ...move, seenTxId: null, counted: true }]);
 
     // The deposit lands (pending): the available balance already has it, so the move is not counted again.
     const landed = short();
@@ -581,7 +581,7 @@ describe("moving money to avoid overdrafts", () => {
       pending: true,
     });
     const seen = forecastCash({ asOf: AS_OF, ...landed, cushionCents: 25_000, moves: [move] });
-    expect(seen.moves).toEqual([{ id: "m1", seenTxId: "p-move", counted: false }]);
+    expect(seen.moves).toEqual([{ ...move, seenTxId: "p-move", counted: false }]);
     expect(seen.accounts.find((a) => a.account.id === "chk")?.low.cents).toBe(20_000);
     expect(seen.accounts.find((a) => a.account.id === "chk")?.items.some((i) => i.moveId)).toBe(false);
 
@@ -592,6 +592,113 @@ describe("moving money to avoid overdrafts", () => {
       cushionCents: 25_000,
       moves: [{ ...move, date: "2026-11-10", createdOn: "2026-11-09" }],
     });
-    expect(stale.moves).toEqual([{ id: "m1", seenTxId: null, counted: false }]);
+    expect(stale.moves).toMatchObject([{ id: "m1", seenTxId: null, counted: false }]);
+  });
+});
+
+describe("move plan alerts", () => {
+  const settings = { largeChargeCents: 10_000_000, lowBalanceCents: 0, billLeadDays: 0 };
+  const joint = (balanceCents: number): CashAccount => ({
+    id: "chk2",
+    name: "Joint",
+    mask: "5555",
+    type: "depository",
+    subtype: "checking",
+    business: false,
+    balanceCents,
+  });
+  const alerts = (cash: ReturnType<typeof forecastCash>, asOf = AS_OF) =>
+    buildAlerts({ asOf, recurring: [], budgets: [], classified: [], accounts: [], settings, cash });
+
+  it("names every move of a split plan, the fees it avoids and what is still short", () => {
+    const h = household({ checkingCents: 100_000, groceryCents: 9_000 });
+    (h.accounts.find((a) => a.id === "sav") as CashAccount).balanceCents = 30_000;
+    h.accounts.push(joint(55_000));
+    const risk = alerts(forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000 })).find((a) =>
+      a.key.startsWith("overdraft:chk:"),
+    );
+    // By hand (see "splits the move"): 300 from Joint, 300 from savings, 200 of the 800 left over.
+    expect(risk?.detail).toBe(
+      "Bills due before money comes in take it to -$600 (LANDLORD LLC on Dec 1). Move $300 from Joint and $300 from Savings by Nov 30 to avoid about $35 in fees. That still leaves it $200 short, so hold off on spending from it.",
+    );
+  });
+
+  it("warns about a business account short within its week, with its own move", () => {
+    // Two days later, the business payroll on Dec 3 is 5 days away.
+    const asOf = "2026-11-28";
+    const h = household({ checkingCents: 100_000, groceryCents: 9_000 });
+    const biz = alerts(forecastCash({ asOf, ...h, cushionCents: 25_000 }), asOf).find((a) =>
+      a.key.startsWith("overdraft:biz:"),
+    );
+    expect(biz).toMatchObject({
+      kind: "overdraft-risk",
+      severity: "bad",
+      title: "Overdraft risk: Business on Dec 3",
+    });
+    // 500 against 1,000 of payroll: -500, covered exactly; the fee is the 35 charged on checking.
+    expect(biz?.detail).toMatch(
+      /^Its bills take it to -\$500 \(INTUIT.* on Dec 3\)\. Move \$500 from Savings by Dec 2 to avoid about \$35 in fees\.$/,
+    );
+  });
+
+  it("does not warn about a business shortfall a week or more away", () => {
+    const h = household({ checkingCents: 100_000, groceryCents: 9_000 });
+    const all = alerts(forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000 }));
+    // Dec 3 is 7 days after Nov 26: its plan is still on Safe to spend, but no alert yet.
+    expect(all.some((a) => a.key.startsWith("overdraft:biz:"))).toBe(false);
+    expect(all.some((a) => a.key.startsWith("overdraft:chk:"))).toBe(true);
+  });
+
+  it("says today when the move is due today", () => {
+    // On Nov 30 rent is due tomorrow, so the move is due today.
+    const asOf = "2026-11-30";
+    const h = household({ checkingCents: 100_000, groceryCents: 9_000 });
+    const risk = alerts(forecastCash({ asOf, ...h, cushionCents: 25_000 }), asOf).find((a) =>
+      a.key.startsWith("overdraft:chk:"),
+    );
+    expect(risk?.detail).toMatch(/ Move \$[\d,]+ from Savings today to avoid about \$35 in fees\.$/);
+  });
+
+  it("says when no account can spare the money", () => {
+    const h = household({ checkingCents: 100_000, groceryCents: 9_000 });
+    (h.accounts.find((a) => a.id === "sav") as CashAccount).balanceCents = 0;
+    const risk = alerts(forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000 })).find((a) =>
+      a.key.startsWith("overdraft:chk:"),
+    );
+    expect(risk?.detail).toMatch(
+      /No account can spare the money, so hold off on spending from it until money comes in\.$/,
+    );
+  });
+
+  it("raises a move that has not shown up two days after its date, once per move", () => {
+    const h = household({ checkingCents: 100_000, groceryCents: 9_000 });
+    const move = {
+      id: "m1",
+      fromAccountId: "sav",
+      toAccountId: "chk",
+      cents: 80_000,
+      date: "2026-11-24",
+      createdOn: "2026-11-23",
+    };
+    const late = alerts(forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000, moves: [move] })).filter(
+      (a) => a.kind === "move-not-seen",
+    );
+    expect(late).toEqual([
+      {
+        key: "move-not-seen:m1",
+        kind: "move-not-seen",
+        severity: "warn",
+        title: "$800 move to Checking not seen yet",
+        detail:
+          "You marked it moved from Savings for Nov 24, but no deposit of about that amount has shown up. The forecast counts it until Dec 1; if it did not happen, remove it on Safe to spend.",
+        date: "2026-11-24",
+        amountCents: 80_000,
+      },
+    ]);
+    // One day after its date is too soon to worry.
+    const soon = alerts(
+      forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000, moves: [{ ...move, date: "2026-11-25" }] }),
+    );
+    expect(soon.some((a) => a.kind === "move-not-seen")).toBe(false);
   });
 });

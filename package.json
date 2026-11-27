@@ -22,10 +22,10 @@
     "db:down": "supabase stop",
     "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/db-migrate.ts",
     "e2e": "playwright test -c e2e/playwright.config.ts",
-    "sync": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/sync-all.ts",
+    "sync": "TSX_TSCONFIG_PATH=apps/web/tsconfig.json node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/sync-all.ts",
     "backup": "node scripts/backup.mjs",
     "verify:financekit": "node --import tsx scripts/verify/financekit-swift-format.ts",
-    "notify": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/notify.ts",
+    "notify": "TSX_TSCONFIG_PATH=apps/web/tsconfig.json node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/notify.ts",
     "schedule": "node scripts/schedule.mjs"
   },
   "devDependencies": {

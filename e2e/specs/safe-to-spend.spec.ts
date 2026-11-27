@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seriousViolations } from "../helpers/a11y";
 import { createVerifiedUser, signInContext } from "../helpers/auth";
 import { fakePlaid } from "../helpers/fake-plaid";
 
@@ -160,4 +161,76 @@ test("an account that would go below zero gets a plan to move money in, and the 
   await page.reload();
   await expect(page.getByTestId("moves-list")).toContainText("counted in the forecast");
   await expect(page.getByTestId("move-plan")).toHaveCount(0);
+});
+
+test("the dashboard carries the plan to avoid overdraft fees, its alert links to it, and the fees avoided", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const user = await createVerifiedUser();
+  await signInContext(context, user, baseURL as string);
+  await page.goto("/dashboard");
+  await page.request.post("/api/plaid/link/exchange", {
+    data: { public_token: await fakePlaid.publicToken(), institution: null },
+  });
+  // A 10,000 bill tomorrow overdraws checking (8,300); savings (22,000) can cover it.
+  await page.goto("/safe-to-spend");
+  const form = page.getByTestId("bill-form");
+  await form.getByLabel("Name").fill("Roof repair");
+  await form.getByLabel("Amount ($)").fill("10,000");
+  await form.getByLabel("How often").selectOption("yearly");
+  await form.getByLabel("Next due").fill("2026-11-26");
+  await form.getByRole("button", { name: "Add bill" }).click();
+  await expect(form).toContainText("Added Roof repair.");
+
+  await page.goto("/dashboard");
+  const plan = page.getByTestId("dashboard-moves");
+  await expect(plan).toContainText(
+    /Move \$[\d,]+ from High Yield Savings \.\.\.2222 to Everyday Checking \.\.\.1111 by/,
+  );
+  await expect(plan.getByTestId("move-fees")).toContainText(/Avoids about \$[\d,]+ in fees/);
+  await plan.getByTestId("move-drill").click();
+  await expect(plan.getByTestId("move-need-total")).toContainText("To move");
+  await expect(plan).not.toContainText("does not add up");
+
+  // With a plan and its alert showing, these pages pass axe and never scroll sideways, on a phone and a laptop.
+  for (const path of ["/dashboard", "/safe-to-spend", "/alerts"]) {
+    for (const width of [375, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(path);
+      if (path !== "/alerts") await expect(page.getByTestId("move-plan").first()).toBeVisible();
+      else await expect(page.getByText(/Overdraft risk: Everyday Checking/)).toBeVisible();
+      expect(await seriousViolations(page), `${path} at ${width}`).toEqual([]);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow, `${path} at ${width} scrolls sideways`).toBeLessThanOrEqual(0);
+    }
+  }
+  await page.goto("/dashboard");
+
+  // The headline figure opens too.
+  const safe = page.getByTestId("dashboard-safe-drill");
+  await safe.click();
+  await expect(page.getByTestId("safe-low-total")).toBeVisible();
+
+  // The overdraft alert names the move and its fees, and its title opens the plan.
+  const alerts = page.getByTestId("dashboard-alerts");
+  await expect(alerts).toContainText(
+    /Move \$[\d,]+ from High Yield Savings today to avoid about \$[\d,]+ in fees\./,
+  );
+  await expect(alerts.getByRole("link", { name: /Overdraft risk: Everyday Checking/ })).toHaveAttribute(
+    "href",
+    "/safe-to-spend#moves",
+  );
+
+  // I moved it, from the dashboard: the plan goes away and the fees avoided show, and open.
+  await plan.getByTestId("move-record").click();
+  await expect(page.getByTestId("toast")).toContainText(/Counted the \$[\d,.]+ move\./);
+  await page.reload();
+  await expect(page.getByTestId("dashboard-moves")).toHaveCount(0);
+  const saved = page.getByTestId("dashboard-fees-saved");
+  await expect(saved).toContainText(/Moving money has avoided \$[1-9][\d,]* in fees \(1 move\)/);
+  await saved.getByTestId("dashboard-fees-saved-drill").click();
+  await expect(saved.getByTestId("fees-saved-total")).toContainText("Fees avoided");
+  await expect(saved).not.toContainText("does not add up");
 });

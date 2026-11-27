@@ -11,17 +11,17 @@ import {
   accountLowBreakdown,
   feesPaidBreakdown,
   feesSavedBreakdown,
-  movePlanBreakdown,
+  movePlans,
   safeBreakdown,
 } from "@/server/insights/breakdowns";
 import {
   addBillAction,
-  recordMoveAction,
   removeBillAction,
   removeMoveAction,
   restoreMoveAction,
   saveCushionAction,
 } from "./actions";
+import { MovePlans } from "./move-plans";
 
 export const metadata = { title: "Safe to spend | FIRE Planner" };
 
@@ -97,13 +97,7 @@ export default async function SafeToSpendPage() {
   const shortAccounts = cash.accounts.filter((f) => f.role === "spending" && f.shortfall);
   const chargesFor = (ids: string[]) => charges.byIds(ids);
   const nameOf = (id: string) => names.get(id) ?? "an account";
-  const plans = cash.accounts
-    .filter((f) => f.shortfall)
-    .map((f) => {
-      const ms = cash.transfers.filter((t) => t.toAccountId === f.account.id);
-      return { f, moves: ms, breakdown: movePlanBreakdown(f, ms, nameOf, chargesFor) };
-    })
-    .filter((p) => p.moves.length);
+  const plans = movePlans(cash, nameOf, chargesFor);
   const savedBreakdown = feesSavedBreakdown(moves, nameOf, chargesFor);
   const paidBreakdown = feesPaidBreakdown(cash, chargesFor);
   const showFees = plans.length > 0 || moves.length > 0 || cash.feesCents > 0;
@@ -189,77 +183,7 @@ export default async function SafeToSpendPage() {
       {showFees ? (
         <Card id="moves" title="Avoid overdraft fees">
           <div className="flex flex-col gap-5">
-            {plans.map(({ f, moves: ms, breakdown: b }, pi) => {
-              const s = f.shortfall as NonNullable<typeof f.shortfall>;
-              const first = ms[0] as (typeof ms)[number];
-              const fees = ms.reduce((t, m) => t + m.feesAvoidedCents, 0);
-              const count = ms.reduce((t, m) => t + m.overdrawn.length, 0);
-              return (
-                <div key={f.account.id} className="flex flex-col gap-2" data-testid="move-plan">
-                  <p className="font-medium">
-                    {ms.length === 1
-                      ? `Move ${usdCents(first.cents)} from ${nameOf(first.fromAccountId)} to ${nameOf(f.account.id)} by ${day(first.byDate)}`
-                      : `Move ${usdCents(ms.reduce((t, m) => t + m.cents, 0))} into ${nameOf(f.account.id)} by ${day(first.byDate)}`}
-                  </p>
-                  <p className="text-sm text-ink-2">
-                    It goes to {usdCents(first.coverDays ? -first.coverCents : s.worstCents)} by{" "}
-                    {short(first.worstDate)}
-                    {s.cause ? `, starting when ${s.cause} comes out on ${short(s.date)}` : ""}.{" "}
-                    {first.coverDays
-                      ? `This covers its bills for the next ${first.coverDays} days. Business income that does not arrive on a schedule is not counted, so check again after a deposit.`
-                      : "This covers that and your usual spending from it until then."}
-                    {first.uncoveredCents > 0
-                      ? ` It is still ${usdCents(first.uncoveredCents)} short: no other account can spare more, so hold off on spending from it.`
-                      : ""}
-                  </p>
-                  {fees > 0 ? (
-                    <p className="text-sm text-ink-2" data-testid="move-fees">
-                      Avoids about <span className="num font-medium text-accent">{usdCents(fees)}</span> in
-                      fees: {count} {count === 1 ? "charge" : "charges"} would come out below $0, at{" "}
-                      {usdCents(first.fee.perItemCents, { cents: true })} each (
-                      {first.fee.source === "history"
-                        ? first.fee.ownAccount
-                          ? "what this account was charged before"
-                          : "what your other accounts were charged before"
-                        : first.fee.source === "yours"
-                          ? "the fee you set"
-                          : "a typical bank fee"}
-                      ).
-                    </p>
-                  ) : null}
-                  {b ? (
-                    <DrillButton breakdown={b} label="How this plan is worked out" testId="move-drill" />
-                  ) : null}
-                  <ul className="flex flex-col gap-2">
-                    {ms.map((m, mi) => (
-                      <li
-                        key={`${m.fromAccountId}-${m.toAccountId}`}
-                        className="flex flex-wrap items-center justify-between gap-2 text-sm"
-                      >
-                        {ms.length > 1 ? (
-                          <span>
-                            <span className="num font-medium">{usdCents(m.cents)}</span> from{" "}
-                            {nameOf(m.fromAccountId)}
-                          </span>
-                        ) : null}
-                        <ButtonForm
-                          action={recordMoveAction}
-                          label={ms.length > 1 ? "I moved this" : "I moved it"}
-                          variant={pi === 0 && mi === 0 ? "primary" : "secondary"}
-                          hidden={{ fromAccountId: m.fromAccountId, toAccountId: m.toAccountId }}
-                          undo={removeMoveAction}
-                          testId="move-record"
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-ink-3">
-                    Tap it once you have moved the money or scheduled it at your bank. The forecast then
-                    counts it until it shows up in your accounts.
-                  </p>
-                </div>
-              );
-            })}
+            <MovePlans plans={plans} nameOf={nameOf} />
 
             <div className="grid gap-4 sm:grid-cols-2">
               {moves.length ? (

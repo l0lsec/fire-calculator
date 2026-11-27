@@ -634,3 +634,24 @@ export function feesPaidBreakdown(
     links: [{ href: "/spending", label: "Spending" }],
   };
 }
+
+export interface MovePlan {
+  f: AccountForecast;
+  moves: TransferSuggestion[];
+  breakdown: Breakdown | null;
+}
+
+/** Each account that would go below zero and has moves to cover it, with how its plan is worked out. */
+export function movePlans(
+  cash: CashForecast,
+  accountName: (id: string) => string,
+  chargesFor: (ids: string[]) => Charge[],
+): MovePlan[] {
+  return cash.accounts
+    .filter((f) => f.shortfall)
+    .map((f) => {
+      const moves = cash.transfers.filter((t) => t.toAccountId === f.account.id);
+      return { f, moves, breakdown: movePlanBreakdown(f, moves, accountName, chargesFor) };
+    })
+    .filter((p) => p.moves.length > 0);
+}

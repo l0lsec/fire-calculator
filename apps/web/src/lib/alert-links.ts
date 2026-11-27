@@ -7,6 +7,7 @@ export const ALERT_HREF: Record<string, string> = {
   "budget-over": "/budgets",
   "budget-near": "/budgets",
   "low-balance": "/safe-to-spend",
-  "overdraft-risk": "/safe-to-spend",
+  "overdraft-risk": "/safe-to-spend#moves",
+  "move-not-seen": "/safe-to-spend#moves",
   "spending-pace": "/safe-to-spend",
 };

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DrillRow, DrillTiles } from "@/components/breakdown";
+import { DrillButton, DrillRow, DrillTiles } from "@/components/breakdown";
 import { ProjectionChart } from "@/components/charts/projection-chart";
 import { StackedBars } from "@/components/charts/stacked-bars";
 import { ProgressBar, StepList } from "@/components/steps";
@@ -10,8 +10,10 @@ import { age, duration, pct, usd, usdCents } from "@/lib/format";
 import { dashboardModel, type LadderRow } from "@/server/dashboard";
 import { DEBT_KIND_LABELS } from "@/server/debts";
 import { loadInsights } from "@/server/insights";
+import { feesSavedBreakdown, movePlans, safeBreakdown } from "@/server/insights/breakdowns";
 import { setupSteps } from "@/server/setup";
 import { planForScenario } from "@/server/snapshot";
+import { MovePlans } from "../safe-to-spend/move-plans";
 import { RateEntry, type RateNeeded } from "./rate-entry";
 
 export const metadata = { title: "Dashboard | FIRE Planner" };
@@ -104,6 +106,18 @@ export default async function DashboardPage({
   // Safe to spend: the day-to-day question, shown above the long-range plan.
   const sp = insights.cash.spendable;
   const shortNow = insights.cash.accounts.some((f) => f.role === "spending" && f.shortfall);
+  // The plan to avoid overdraft fees, the same one Safe to spend shows, and what moves have saved.
+  const accountNames = new Map(
+    insights.cash.accounts.map((f) => [
+      f.account.id,
+      `${f.account.name}${f.account.mask ? ` ...${f.account.mask}` : ""}`,
+    ]),
+  );
+  const nameOf = (id: string) => accountNames.get(id) ?? "an account";
+  const chargesFor = (ids: string[]) => insights.charges.byIds(ids);
+  const plans = movePlans(insights.cash, nameOf, chargesFor);
+  const safeDrill = safeBreakdown(insights.cash, nameOf, chargesFor);
+  const savedDrill = feesSavedBreakdown(insights.moves, nameOf, chargesFor);
   const shortDay = (iso: string) =>
     new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const safeCard = sp ? (
@@ -130,6 +144,26 @@ export default async function DashboardPage({
               : "Bills take everything until money comes in."}
         </p>
       </div>
+      {safeDrill ? <DrillButton breakdown={safeDrill} testId="dashboard-safe-drill" /> : null}
+      {plans.length ? (
+        <div className="mt-4 flex flex-col gap-5 border-t border-line pt-4" data-testid="dashboard-moves">
+          <p className="text-sm font-medium">Avoid overdraft fees</p>
+          <MovePlans plans={plans} nameOf={nameOf} />
+        </div>
+      ) : null}
+      {savedDrill ? (
+        <div
+          className="mt-4 flex flex-col gap-1 border-t border-line pt-4"
+          data-testid="dashboard-fees-saved"
+        >
+          <p className="text-sm text-ink-3">
+            Moving money has avoided{" "}
+            <span className="num text-lg font-semibold text-accent">{usdCents(insights.feesSavedCents)}</span>{" "}
+            in fees ({insights.moves.length} {insights.moves.length === 1 ? "move" : "moves"}).
+          </p>
+          <DrillButton breakdown={savedDrill} testId="dashboard-fees-saved-drill" />
+        </div>
+      ) : null}
     </Card>
   ) : null;
 
@@ -155,7 +189,7 @@ export default async function DashboardPage({
                   a.title
                 )}
               </span>{" "}
-              <span className="text-xs opacity-80">{a.detail}</span>
+              <span className="text-xs">{a.detail}</span>
             </Notice>
           </li>
         ))}

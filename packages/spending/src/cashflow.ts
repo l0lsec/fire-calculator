@@ -189,7 +189,7 @@ export interface CashForecast {
   feesCents: number;
   feeIds: string[];
   /** Each recorded move: the deposit that shows it arrived, or null while it is still counted ahead. */
-  moves: { id: string; seenTxId: string | null; counted: boolean }[];
+  moves: (RecordedMove & { seenTxId: string | null; counted: boolean })[];
 }
 
 const DAY = 86_400_000;
@@ -515,7 +515,7 @@ export function forecastCash(opts: {
     transfers,
     feesCents,
     feeIds: fees.map((c) => c.tx.id),
-    moves: moves.map((m) => ({ id: m.move.id, seenTxId: m.seenTxId, counted: m.counted })),
+    moves: moves.map((m) => ({ ...m.move, seenTxId: m.seenTxId, counted: m.counted })),
   };
 }
 
