@@ -1,5 +1,6 @@
 import BackgroundTasks
 import FinanceKit
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -41,6 +42,8 @@ struct FIREPlannerSyncApp: App {
     }
 }
 
+private let walletLog = Logger(subsystem: "com.showupshowout.fireplanner", category: "wallet")
+
 @MainActor
 @Observable
 final class SyncModel {
@@ -61,7 +64,13 @@ final class SyncModel {
             last = SyncEngine.lastResult
             return
         }
-        authorization = try? await FinanceStore.shared.authorizationStatus()
+        do {
+            authorization = try await FinanceStore.shared.authorizationStatus()
+            walletLog.notice("status: \(String(describing: self.authorization), privacy: .public)")
+        } catch {
+            authorization = nil
+            walletLog.error("status failed: \(String(reflecting: error), privacy: .public)")
+        }
         last = SyncEngine.lastResult
     }
 
@@ -87,16 +96,20 @@ final class SyncModel {
 
     func allowWalletAccess() async {
         guard FinanceAccess.available else {
+            walletLog.error("request: financial data not available on this device")
             message = SyncError.unavailable.localizedDescription
             return
         }
         do {
+            walletLog.notice("request: asking for Wallet access")
             authorization = try await FinanceStore.shared.requestAuthorization()
+            walletLog.notice("request returned: \(String(describing: self.authorization), privacy: .public)")
             if authorization == .authorized {
                 enableBackgroundDelivery()
                 await syncNow()
             }
         } catch {
+            walletLog.error("request failed: \(String(reflecting: error), privacy: .public)")
             message = "Wallet access did not work. Try again, or turn it on in Settings > Apps > FIRE Planner Sync > Wallet."
         }
     }
