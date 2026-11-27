@@ -12,6 +12,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { type Breakdown, type BreakdownFormat, type BreakdownLine, evaluateStep } from "@/lib/breakdown";
 import { pct, usd } from "@/lib/format";
+import { ChargeList } from "./charges";
 import { Donut } from "./charts/donut";
 
 function fmt(value: number, format: BreakdownFormat = "usd"): string {
@@ -67,6 +68,13 @@ export function BreakdownPanel({ b, onClose }: { b: Breakdown; onClose?: () => v
                   {j === 0 && l.op === "+" ? null : <span className="sr-only">{OP_TEXT[l.op]} </span>}
                   <span className="text-ink">{l.label}</span>
                   {l.detail ? <span className="block text-xs text-ink-3">{l.detail}</span> : null}
+                  {l.charges?.length ? (
+                    <ChargeList
+                      charges={l.charges}
+                      direction={l.chargesIn ? "in" : "out"}
+                      noun={l.chargesIn ? "deposit" : "charge"}
+                    />
+                  ) : null}
                 </span>
                 <span className="num text-right text-ink">{fmt(l.value, l.format)}</span>
               </li>
@@ -280,5 +288,46 @@ export function DrillRow({
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** A summary figure that is not a tile (a page headline): the same breakdown, opened under it. */
+export function DrillButton({ breakdown, testId }: { breakdown: Breakdown; testId?: string }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        ref={button}
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen(!open)}
+        data-testid={testId}
+        className="inline-flex min-h-10 items-center gap-1 self-start rounded-lg px-2 -ml-2 text-sm font-medium text-accent hover:bg-surface-2 pointer-coarse:min-h-11"
+      >
+        {open ? "Hide the breakdown" : "See how it adds up"}
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <section
+          id={panelId}
+          aria-label={`${breakdown.title} breakdown`}
+          className="rounded-2xl border border-accent bg-surface p-5"
+        >
+          {process.env.NODE_ENV !== "production" && !addsUp(breakdown) ? (
+            <p className="mb-2 text-xs text-bad">This breakdown does not add up (development check).</p>
+          ) : null}
+          <BreakdownPanel
+            b={breakdown}
+            onClose={() => {
+              setOpen(false);
+              button.current?.focus();
+            }}
+          />
+        </section>
+      ) : null}
+    </div>
   );
 }

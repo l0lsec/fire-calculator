@@ -5,6 +5,10 @@
 // bottom: start at zero, apply each line in order (+, -, x, /), and the result is
 // the step's total. `evaluateStep` does exactly that, so a unit test can prove the
 // lines on screen produce the figure on the tile.
+//
+// A line built from transactions carries them in `charges`, so it opens the real
+// charges it is made of (docs/UX_PRINCIPLES.md, law 19).
+import type { Charge } from "./charges";
 
 export type BreakdownFormat = "usd" | "pct" | "number";
 
@@ -18,6 +22,10 @@ export interface BreakdownLine {
   /** A short reason or source, shown under the label. */
   detail?: string;
   testId?: string;
+  /** The transactions this line is made of; the panel lets each line open them. */
+  charges?: Charge[];
+  /** The charges are money coming in (pay): show them as positive amounts. */
+  chargesIn?: boolean;
 }
 
 export interface BreakdownStep {

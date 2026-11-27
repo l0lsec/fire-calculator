@@ -28,6 +28,8 @@ write your own:
 | Dates on screen | `dateText`, `dateTimeText` (`lib/format.ts`) | local time, never UTC or ISO strings |
 | A chart | `StackedBars`, `TrendLines`, `ValueBars`, `CategoryTrends`, `Donut` (`components/charts/`), rows shaped in `lib/chart-data.ts` | colors only `--chart-1..4` in order (`--chart-5` is "Other"), validated with the dataviz palette script; every chart has a legend or heading, a hover tooltip and a "Show as a table" view; one measure per axis |
 | A summary number (a total, a rate, a target) | `DrillTiles` / `DrillRow` (`components/breakdown.tsx`) with a `Breakdown` (`lib/breakdown.ts`) | tap opens what it is made of in place; each step's lines must evaluate to its total (`evaluateStep`, unit-tested); say what is not counted and why; link to where each input is changed; `#id` in the URL opens it |
+| The transactions behind a number | `ChargeList` (`components/charges.tsx`) fed by `chargeFinder` (`server/charges.ts`); on a breakdown line, set `BreakdownLine.charges` | "See the 12 charges" opens them in place, newest first, with account names and a total line that equals the figure (or says how it becomes the figure: ÷ 12, annualized); counted amounts carry the reason when they differ from the charge |
+| A headline figure that is not a tile | `DrillButton` (`components/breakdown.tsx`) | "See how it adds up" under the figure, same `BreakdownPanel` |
 | Parts of a whole as a chart | `Breakdown.chart` (rendered by `Donut`, `components/charts/donut.tsx`) built with `foldSlices` | at most four named slices plus a gray "Other"; the legend lists every value and share |
 | Amounts month by month | `MonthlyBars` (`components/charts/monthly-bars.tsx`) | one series, average as a dashed line |
 
@@ -39,6 +41,24 @@ Add a page as a tab of an existing place; a new top-level place needs the owner'
 zero): browser dialogs, raw provider errors, controls under 40 px, colors outside the tokens, `<button>` without
 `type`, and `<img>` without `alt` all fail CI. Keep every `data-testid` the e2e specs use; rename one only
 together with its spec (`node scripts/verify/ux-pages.mjs 3a-dashboard --regressions` checks them all).
+
+## The owner's drill-down rule (every page)
+
+On 2026-11-26 the owner said: "if you're going to display any data to me, I should be able to drill down into
+that data if it's being used to calculate something." So:
+
+- Every figure that is a total, an average, a rate, a forecast or any other result opens what it is made of
+  (`DrillTiles`, `DrillRow`, `DrillButton`), and each part that comes from transactions opens those
+  transactions (`ChargeList`, or `charges` on the breakdown line). No dead ends: the user can always go from
+  the headline to the bank lines.
+- The list must add up: the charges' total equals the figure, or the panel shows the arithmetic that turns it
+  into the figure (a typical charge × 30.44 ÷ cycle days, a year's total ÷ 12). Test it (see
+  `apps/web/test/charges.test.ts` and `e2e/specs/drill-charges.spec.ts`).
+- A new page or figure without a drill-down is unfinished work, not a follow-up.
+
+Pages that follow it today: Dashboard, Accounts, Debts, Spending (tiles, every category and account), Budgets
+(total, each category's month and typical month), Bills (tiles, every series, coming up) and Safe to spend
+(headline, every predicted bill and paycheck).
 
 ## Checklist: what each law means here
 

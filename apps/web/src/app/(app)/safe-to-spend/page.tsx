@@ -1,10 +1,13 @@
 import type { CashFlowItem, FlowKind } from "@fire/spending";
 import { ActionForm, ButtonForm, FormInput, FormSelect } from "@/components/action-form";
+import { DrillButton } from "@/components/breakdown";
+import { ChargeList } from "@/components/charges";
 import { CashChart } from "@/components/charts/cash-chart";
 import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
 import { loadInsights } from "@/server/insights";
+import { safeBreakdown } from "@/server/insights/breakdowns";
 import { addBillAction, removeBillAction, saveCushionAction } from "./actions";
 
 export const metadata = { title: "Safe to spend | FIRE Planner" };
@@ -40,7 +43,7 @@ const dollarsIn = (cents: number) => (cents / 100).toLocaleString("en-US", { max
 
 export default async function SafeToSpendPage() {
   const ctx = await requireContext();
-  const { cash, connected, scheduledBills } = await loadInsights(ctx);
+  const { cash, connected, scheduledBills, charges } = await loadInsights(ctx);
   const sp = cash.spendable;
   const names = new Map(
     cash.accounts.map((f) => [
@@ -69,6 +72,11 @@ export default async function SafeToSpendPage() {
     );
   }
 
+  const breakdown = safeBreakdown(
+    cash,
+    (id) => names.get(id) ?? "an account",
+    (ids) => charges.byIds(ids),
+  );
   const until = sp.nextPayday
     ? `until ${short(sp.nextPayday.date)}`
     : `over the next ${cash.horizonDays} days`;
@@ -124,6 +132,7 @@ export default async function SafeToSpendPage() {
               cushion later, and then nothing more until after {short(sp.low.date)}.
             </p>
           ) : null}
+          {breakdown ? <DrillButton breakdown={breakdown} testId="safe-drill" /> : null}
           {shortAccounts.map((f) => {
             const s = f.shortfall as NonNullable<typeof f.shortfall>;
             const move = cash.transfers.find((t) => t.toAccountId === f.account.id);
@@ -157,37 +166,51 @@ export default async function SafeToSpendPage() {
         <CashChart data={chart} cushion={cash.cushionCents / 100} />
       </Card>
 
-      <Card title="Coming up">
+      <Card id="coming-up" title="Coming up">
         {upcomingItems.length ? (
           <ul className="divide-y divide-line" data-testid="safe-upcoming">
             {upcomingItems.map((i: CashFlowItem & { balanceAfterCents: number }) => (
-              <li key={i.key} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                <span className="min-w-0">
-                  <span className="text-ink-3">{day(i.date)}</span>{" "}
-                  <span className="font-medium">{i.name}</span>{" "}
-                  <span className="text-xs text-ink-3">
-                    {KIND[i.kind]}
-                    {i.scheduledId ? ", added by you" : ""}
-                    {i.late ? ", was due earlier" : ""}
-                    {i.confidence === "likely" ? ", seen twice" : ""} · {names.get(i.accountId)}
+              <li key={i.key} className="flex flex-col gap-1 py-2 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className="text-ink-3">{day(i.date)}</span>{" "}
+                    <span className="font-medium">{i.name}</span>{" "}
+                    <span className="text-xs text-ink-3">
+                      {KIND[i.kind]}
+                      {i.scheduledId ? ", added by you" : ""}
+                      {i.late ? ", was due earlier" : ""}
+                      {i.confidence === "likely" ? ", seen twice" : ""} · {names.get(i.accountId)}
+                    </span>
                   </span>
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className={`num ${i.deltaCents > 0 ? "text-accent" : ""}`}>
-                    {signed(i.deltaCents)}
+                  <span className="flex items-center gap-3">
+                    <span className={`num ${i.deltaCents > 0 ? "text-accent" : ""}`}>
+                      {signed(i.deltaCents)}
+                    </span>
+                    <span
+                      className={`num w-24 text-right text-xs ${
+                        i.balanceAfterCents < 0
+                          ? "font-semibold text-bad"
+                          : i.balanceAfterCents < cash.cushionCents
+                            ? "text-warn"
+                            : "text-ink-3"
+                      }`}
+                    >
+                      {usdCents(i.balanceAfterCents)}
+                    </span>
                   </span>
-                  <span
-                    className={`num w-24 text-right text-xs ${
-                      i.balanceAfterCents < 0
-                        ? "font-semibold text-bad"
-                        : i.balanceAfterCents < cash.cushionCents
-                          ? "text-warn"
-                          : "text-ink-3"
-                    }`}
-                  >
-                    {usdCents(i.balanceAfterCents)}
-                  </span>
-                </span>
+                </div>
+                <ChargeList
+                  charges={charges.byIds(i.sourceIds)}
+                  testId="upcoming-charges"
+                  direction={i.deltaCents > 0 ? "in" : "out"}
+                  noun={i.deltaCents > 0 ? "deposit" : "charge"}
+                  label={`Predicted from ${i.sourceIds.length} past ${i.deltaCents > 0 ? "deposits" : "charges"}`}
+                  explain={
+                    i.deltaCents > 0
+                      ? "Pay is counted at its lower recent amount, on the same schedule."
+                      : "A bill that varies is counted at its higher recent amount, on the same schedule."
+                  }
+                />
               </li>
             ))}
           </ul>

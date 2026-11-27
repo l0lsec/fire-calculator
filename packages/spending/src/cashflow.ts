@@ -41,6 +41,8 @@ export interface CashFlowItem {
   late: boolean;
   /** Set when the user added this bill by hand (its scheduled bill id). */
   scheduledId?: string;
+  /** The past transactions this item was predicted from (empty for a bill added by hand). */
+  sourceIds: string[];
 }
 
 /** A bill the user knows is coming that the history cannot show yet. */
@@ -232,6 +234,7 @@ export function forecastCash(opts: {
         items.push({
           key: `${s.key}@${date}`,
           seriesKey: s.key,
+          sourceIds: s.transactionIds,
           accountId: account.id,
           name: cleanName(s.name),
           date,
@@ -273,6 +276,7 @@ export function forecastCash(opts: {
         items.push({
           key: `manual:${bill.id}@${d}`,
           seriesKey: `manual:${bill.id}`,
+          sourceIds: [],
           accountId: account.id,
           name: bill.name,
           date: d,

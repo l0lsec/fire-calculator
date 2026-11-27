@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
+import { DrillTiles } from "@/components/breakdown";
+import { ChargeList } from "@/components/charges";
 import { Card, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { dateText, usdCents } from "@/lib/format";
+import { isLiving } from "@/server/charges";
 import { categoryName, loadInsights } from "@/server/insights";
+import { budgetBreakdown } from "@/server/insights/breakdowns";
 import { saveBudgetAction, suggestBudgetsAction } from "./actions";
 import { BudgetInput } from "./budget-input";
 
@@ -18,7 +22,16 @@ const BAR: Record<string, string> = {
 
 export default async function BudgetsPage() {
   const ctx = await requireContext();
-  const { budgets, asOf, connected } = await loadInsights(ctx);
+  const { budgets, asOf, connected, charges, typical } = await loadInsights(ctx);
+  const ym = asOf.slice(0, 7);
+  const primaryOf = (c: { tx: { pfcPrimary: string | null } }) => c.tx.pfcPrimary ?? "UNCATEGORIZED";
+  // The same transactions budgetReport counts: posted living spending and refunds this month, full amounts.
+  const thisMonth = (category: string) =>
+    charges.where((c) => isLiving(c) && c.tx.date.startsWith(ym) && primaryOf(c) === category);
+  // The typical month: the category's counted spending over the window, divided by its months.
+  const divisor = typical.months > 0 && typical.months < 12 ? typical.months : 12;
+  const overYear = (category: string) =>
+    typical.charges.where((c) => isLiving(c) && primaryOf(c) === category, { counted: true });
   const month = new Date(`${asOf}T00:00:00Z`).toLocaleString("en-US", {
     month: "long",
     year: "numeric",
@@ -51,16 +64,21 @@ export default async function BudgetsPage() {
       </div>
       {!connected ? <Notice>Connect a bank to see spending against your budgets.</Notice> : null}
       {budgeted.length > 0 ? (
-        <Card>
-          <p className="text-sm">
-            <span className="text-2xl font-semibold tabular-nums" data-testid="budget-total">
-              {usdCents(totalSpent)}
-            </span>{" "}
-            <span className="text-ink-3">of {usdCents(totalBudget)} budgeted this month</span>
-          </p>
-        </Card>
+        <DrillTiles
+          className="sm:grid-cols-1"
+          tiles={[
+            {
+              id: "budget-total",
+              label: "Spent this month",
+              testId: "budget-total",
+              figure: usdCents(totalSpent),
+              sub: `of ${usdCents(totalBudget)} budgeted this month`,
+              breakdown: budgetBreakdown(budgets, categoryName, thisMonth, month),
+            },
+          ]}
+        />
       ) : null}
-      <Card title="By category">
+      <Card id="by-category" title="By category">
         {budgets.length === 0 ? (
           <p className="text-sm text-ink-3">No spending yet this year.</p>
         ) : (
@@ -89,6 +107,27 @@ export default async function BudgetsPage() {
                     <div
                       className={`absolute inset-y-0 left-0 ${BAR[b.status]}`}
                       style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-x-4">
+                    <ChargeList
+                      charges={thisMonth(b.category)}
+                      testId="budget-month-charges"
+                      label={`This month's ${thisMonth(b.category).length} charges`}
+                      totalLabel="Spent this month, total"
+                    />
+                    <ChargeList
+                      charges={overYear(b.category)}
+                      testId="budget-typical-charges"
+                      label="How the typical month is worked out"
+                      totalLabel={`Counted from ${dateText(typical.start)} to ${dateText(typical.end)}, total`}
+                      explain={
+                        <>
+                          Typical month: everything counted in this category over the last {divisor} months,
+                          divided by {divisor}, is {usdCents(b.averageCents)}. One-time and spread-out charges
+                          count at the amount you chose on the Spending page.
+                        </>
+                      }
                     />
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-3">

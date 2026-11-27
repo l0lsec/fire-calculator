@@ -28,6 +28,7 @@ import {
   type RecurringSeries,
 } from "@fire/spending";
 import { z } from "zod";
+import { chargeFinder } from "../charges";
 import { type ActionResult, checkbox, dollars, parseForm } from "../forms";
 import { deriveHouseholdSpending, todayISO } from "../snapshot";
 
@@ -153,6 +154,15 @@ export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
       .map((b) => ({ ...b, dueDate: nextDue(b, asOf) }))
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.name.localeCompare(b.name)),
     week: { spentCents: last7, previousCents: prev7 },
+    /** The transactions behind any number on these pages. */
+    charges: chargeFinder(current.classified, accounts),
+    /** The 12 full months behind each category's typical month, and how they are scaled to a year. */
+    typical: {
+      charges: chargeFinder(history.classified, accounts),
+      months: history.monthsOfData,
+      start: history.windowStart,
+      end: history.windowEnd,
+    },
     alerts: alertsAll.filter((a) => !dismissed.has(a.key)),
     unnotified: (alerts: Alert[]) => alerts.filter((a) => !notified.has(a.key)),
     settings,

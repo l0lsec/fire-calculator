@@ -16,6 +16,9 @@ The shared pieces have shipped; the doc's status section lists them. In short:
   for an action that cannot be undone or stops something working;
 - feedback through `ActionForm`, `ButtonForm` (with `doneMessage`, `undo`) and `useToast`; no new toast, dialog
   or pending-button helper;
+- every figure used in a calculation drills down to what it is made of, and parts built from transactions open
+  those transactions (`DrillTiles`/`DrillButton` with a `Breakdown`, `ChargeList`); the owner's rule, see
+  "The owner's drill-down rule" in `docs/UX_PRINCIPLES.md`;
 - never show a raw provider `error.message` (Supabase, Plaid, FinanceKit); use `explainError`;
 - plan-changing saves wrap their change in `withFiEffect` so they say how the FI date moved;
 - no new top-level place in the nav (`apps/web/src/components/app-nav.tsx`) without asking the owner;

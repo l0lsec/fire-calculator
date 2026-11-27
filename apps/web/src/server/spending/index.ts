@@ -20,6 +20,7 @@ import type { AnnualSpending } from "@fire/spending";
 import { z } from "zod";
 import { type Breakdown, type BreakdownLine, foldSlices } from "@/lib/breakdown";
 import { dateText } from "@/lib/format";
+import { type ChargeFinder, chargeFinder, isLiving } from "../charges";
 import type { ActionResult } from "../forms";
 import { deriveHouseholdSpending, hasConnectedAccounts } from "../snapshot";
 
@@ -63,7 +64,13 @@ export async function spendingView(ctx: Ctx, asOf: string) {
     }))
     .filter((a) => a.livingCents !== 0 || a.business)
     .sort((a, b) => b.livingCents - a.livingCents);
-  return { s, byAccount, connected: items.length > 0 || hasConnectedAccounts({ accounts }) };
+  return {
+    s,
+    byAccount,
+    connected: items.length > 0 || hasConnectedAccounts({ accounts }),
+    /** The transactions behind any figure on the page. */
+    charges: chargeFinder(s.classified, accounts),
+  };
 }
 
 /** Mark an account as business (its spending is shown apart, still inside the totals) or personal. */
@@ -239,8 +246,13 @@ export async function useMeasuredSpending(ctx: Ctx, use: boolean): Promise<Actio
 /** What each Spending-page total is made of (the drill-down behind its tiles). */
 export function spendingBreakdowns(
   s: AnnualSpending,
+  find?: ChargeFinder,
 ): Record<"annual" | "essentials" | "discretionary", Breakdown> {
   const d = (cents: number) => cents / 100;
+  // The transactions behind each line, at the amounts they count (law 19).
+  const livingTx = find?.where(isLiving, { counted: true }) ?? [];
+  const essentialTx = find?.where((c) => isLiving(c) && c.essential, { counted: true }) ?? [];
+  const with_ = (charges: typeof livingTx) => (charges.length ? { charges } : {});
   const living = d(s.livingCents);
   const essentialLiving = d(s.livingEssentialCents);
   const escrow = d(s.escrowCents);
@@ -268,7 +280,13 @@ export function spendingBreakdowns(
       steps: [
         {
           lines: [
-            { op: "+", label: "Living spending", value: living, detail: "from your connected accounts" },
+            {
+              op: "+",
+              label: "Living spending",
+              value: living,
+              detail: "from your connected accounts",
+              ...with_(livingTx),
+            },
             ...escrowLine,
           ],
           total: { label: "Annual spending", value: d(s.totalCents) },
@@ -315,6 +333,7 @@ export function spendingBreakdowns(
               label: "Essential living spending",
               value: essentialLiving,
               detail: "categories marked essential",
+              ...with_(essentialTx),
             },
             ...escrowLine,
           ],
@@ -331,8 +350,13 @@ export function spendingBreakdowns(
       steps: [
         {
           lines: [
-            { op: "+", label: "Living spending", value: living },
-            { op: "-", label: "Essential living spending", value: essentialLiving },
+            { op: "+", label: "Living spending", value: living, ...with_(livingTx) },
+            {
+              op: "-",
+              label: "Essential living spending",
+              value: essentialLiving,
+              ...with_(essentialTx),
+            },
           ],
           total: { label: "Discretionary", value: d(s.discretionaryCents) },
         },

@@ -2,12 +2,14 @@ import { getSpendingProfile } from "@fire/db";
 import Link from "next/link";
 import { ButtonForm } from "@/components/action-form";
 import { DrillTiles } from "@/components/breakdown";
+import { ChargeList } from "@/components/charges";
 import { CategoryTrends } from "@/components/charts/category-trends";
 import { StackedBars } from "@/components/charts/stacked-bars";
 import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { categoryTrends, spendingSplitByMonth } from "@/lib/chart-data";
 import { dateText, usdCents } from "@/lib/format";
+import { isLiving } from "@/server/charges";
 import { effectiveSpendingSource, todayISO } from "@/server/snapshot";
 import { categoryLabel, FLAG_TEXT, spendingBreakdowns, spendingView } from "@/server/spending";
 import {
@@ -23,14 +25,19 @@ export const metadata = { title: "Spending | FIRE Planner" };
 
 export default async function SpendingPage() {
   const ctx = await requireContext();
-  const [{ s, byAccount, connected }, profile] = await Promise.all([
+  const [{ s, byAccount, connected, charges }, profile] = await Promise.all([
     spendingView(ctx, todayISO()),
     getSpendingProfile(ctx.db, ctx.scope),
   ]);
   const usingMeasured = effectiveSpendingSource(profile, s) === "plaid";
   const hasEstimate = (profile?.manualAnnualCents ?? 0) > 0;
   const queue = s.reviewQueue.slice(0, 40);
-  const breakdowns = spendingBreakdowns(s);
+  const breakdowns = spendingBreakdowns(s, charges);
+  // Figures are annualized when there is less than a year of history.
+  const scaled = s.monthsOfData > 0 && s.monthsOfData < 12;
+  const yearNote = scaled
+    ? `These charges cover ${s.monthsOfData} months; the yearly figure is their total × 12 ÷ ${s.monthsOfData}.`
+    : `Counted from ${dateText(s.windowStart)} to ${dateText(s.windowEnd)}. One-time and spread-out charges count at the amount you chose.`;
   const months = s.monthly.map((m) => m.month);
   const split = spendingSplitByMonth(s.classified, months);
   const withSpending = s.monthly.filter((m) => m.livingCents !== 0);
@@ -271,20 +278,27 @@ export default async function SpendingPage() {
           </p>
           <ul className="divide-y divide-line" data-testid="spending-accounts">
             {byAccount.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                <span className="min-w-0">
-                  {a.name} {a.mask ? <span className="text-ink-3">...{a.mask}</span> : null}{" "}
-                  {a.business ? <span className="text-xs text-accent">business</span> : null}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="num">{usdCents(a.livingCents)}/yr</span>
-                  <ButtonForm
-                    action={accountBusinessAction}
-                    undo={accountBusinessAction}
-                    label={a.business ? "Mark as personal" : "Mark as business"}
-                    hidden={{ id: a.id, business: a.business ? "false" : "true" }}
-                  />
-                </span>
+              <li key={a.id} className="flex flex-col gap-1 py-2 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0">
+                    {a.name} {a.mask ? <span className="text-ink-3">...{a.mask}</span> : null}{" "}
+                    {a.business ? <span className="text-xs text-accent">business</span> : null}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="num">{usdCents(a.livingCents)}/yr</span>
+                    <ButtonForm
+                      action={accountBusinessAction}
+                      undo={accountBusinessAction}
+                      label={a.business ? "Mark as personal" : "Mark as business"}
+                      hidden={{ id: a.id, business: a.business ? "false" : "true" }}
+                    />
+                  </span>
+                </div>
+                <ChargeList
+                  charges={charges.where((c) => isLiving(c) && c.tx.accountId === a.id, { counted: true })}
+                  testId="account-charges"
+                  explain={yearNote}
+                />
               </li>
             ))}
           </ul>
@@ -300,24 +314,31 @@ export default async function SpendingPage() {
       <Card id="by-category" title="By category">
         <ul className="divide-y divide-line">
           {s.byCategory.map((c) => (
-            <li key={c.category} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-              <span>
-                {categoryLabel(c.category)}{" "}
-                <span className={`text-xs ${c.essential ? "text-accent" : "text-ink-3"}`}>
-                  {c.essential ? "essential" : "discretionary"}
+            <li key={c.category} className="flex flex-col gap-1 py-2 text-sm" data-testid="category-row">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {categoryLabel(c.category)}{" "}
+                  <span className={`text-xs ${c.essential ? "text-accent" : "text-ink-3"}`}>
+                    {c.essential ? "essential" : "discretionary"}
+                  </span>
                 </span>
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="num">{usdCents(c.totalCents)}</span>
-                {/^[A-Z_]+$/.test(c.category) ? (
-                  <ButtonForm
-                    action={categoryEssentialAction}
-                    undo={undoCategoryEssentialAction}
-                    label={c.essential ? "Mark discretionary" : "Mark essential"}
-                    hidden={{ category: c.category, essential: c.essential ? "false" : "true" }}
-                  />
-                ) : null}
-              </span>
+                <span className="flex items-center gap-2">
+                  <span className="num">{usdCents(c.totalCents)}</span>
+                  {/^[A-Z_]+$/.test(c.category) ? (
+                    <ButtonForm
+                      action={categoryEssentialAction}
+                      undo={undoCategoryEssentialAction}
+                      label={c.essential ? "Mark discretionary" : "Mark essential"}
+                      hidden={{ category: c.category, essential: c.essential ? "false" : "true" }}
+                    />
+                  ) : null}
+                </span>
+              </div>
+              <ChargeList
+                charges={charges.where((t) => isLiving(t) && t.category === c.category, { counted: true })}
+                testId="category-charges"
+                explain={yearNote}
+              />
             </li>
           ))}
         </ul>
