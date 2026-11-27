@@ -60,7 +60,7 @@ that data if it's being used to calculate something." So:
 
 Pages that follow it today: Dashboard, Accounts, Debts, Spending (tiles, every category and account), Budgets
 (total, each category's month and typical month), Bills (tiles, every series, coming up) and Safe to spend
-(headline, every predicted bill and paycheck).
+(headline, every predicted bill and paycheck, each plan to avoid an overdraft, fees avoided and fees paid).
 
 ## Checklist: what each law means here
 

@@ -50,6 +50,13 @@
       "when": 1795732824284,
       "tag": "0006_scheduled_bills",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795802724743,
+      "tag": "0007_cash_moves",
+      "breakpoints": true
     }
   ]
 }

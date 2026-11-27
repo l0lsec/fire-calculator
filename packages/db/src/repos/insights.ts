@@ -78,6 +78,7 @@ export const DEFAULT_ALERT_SETTINGS = {
   billLeadDays: 5,
   macNotifications: true,
   weeklySummary: true,
+  overdraftFeeCents: null as number | null,
   lastWeeklySummaryAt: null as Date | null,
 };
 
@@ -101,6 +102,7 @@ export async function setAlertSettings(
       | "billLeadDays"
       | "macNotifications"
       | "weeklySummary"
+      | "overdraftFeeCents"
       | "lastWeeklySummaryAt"
     >
   >,

@@ -1,6 +1,12 @@
 // What each Bills-page total is made of: the series that add up to it, each with
 // the arithmetic that turns its typical charge into a monthly figure.
-import type { AccountForecast, CashFlowItem, CashForecast, RecurringSeries } from "@fire/spending";
+import type {
+  AccountForecast,
+  CashFlowItem,
+  CashForecast,
+  RecurringSeries,
+  TransferSuggestion,
+} from "@fire/spending";
 import { type Breakdown, type BreakdownLine, type BreakdownStep, foldSlices } from "@/lib/breakdown";
 import type { Charge } from "@/lib/charges";
 import { usdCents } from "@/lib/format";
@@ -379,5 +385,252 @@ export function safeBreakdown(
       },
     ],
     links: [{ href: "#coming-up", label: "Every bill and paycheck, below" }],
+  };
+}
+
+const FEE_FROM: Record<TransferSuggestion["fee"]["source"], string> = {
+  yours: "the fee you set below",
+  history: "what your bank charged you before",
+  typical: "a typical bank fee; set your bank's fee below",
+};
+
+/** How the fee per overdraft is set: the fee you entered, or the middle of the past fees (which open). */
+function feeLine(fee: TransferSuggestion["fee"], chargesFor: (ids: string[]) => Charge[]): BreakdownLine {
+  const past = fee.source === "history" ? chargesFor(fee.feeIds) : [];
+  return {
+    op: "×",
+    label: "Fee for each one",
+    value: fee.perItemCents / 100,
+    format: "usd",
+    detail:
+      fee.source === "history"
+        ? `the middle of ${past.length} overdraft ${past.length === 1 ? "fee" : "fees"} charged ${fee.ownAccount ? "on this account" : "on your other accounts"} in the last 2 years`
+        : FEE_FROM[fee.source],
+    ...(past.length ? { charges: past } : {}),
+  };
+}
+
+/**
+ * The plan for one account that would go below zero: how low it goes and why,
+ * how much to move and from where, why each source can spare it, and the fees
+ * the moves avoid, down to the predicted charges and the past fees.
+ */
+export function movePlanBreakdown(
+  f: AccountForecast,
+  moves: TransferSuggestion[],
+  accountName: (id: string) => string,
+  chargesFor: (ids: string[]) => Charge[],
+): Breakdown | null {
+  const first = moves[0];
+  if (!first || !f.shortfall) return null;
+  const d = (cents: number) => cents / 100;
+  const name = accountName(f.account.id);
+  const business = first.coverDays !== null;
+  const today = f.days[0]?.date ?? first.byDate;
+  const daysToWorst = Math.round((Date.parse(first.worstDate) - Date.parse(today)) / 86_400_000) + 1;
+  const needed = first.coverCents + first.paceCents;
+  const overdrawn = moves.flatMap((m) => m.overdrawn);
+  const fees = moves.reduce((s, m) => s + m.feesAvoidedCents, 0);
+  const steps: BreakdownStep[] = [
+    lowPointStep(
+      [{ name, cents: f.startCents }],
+      f.items,
+      // A business plan covers only its week, so walk to that week's deepest point.
+      business ? { date: first.worstDate, cents: -first.coverCents } : f.low,
+      chargesFor,
+      "move-low-total",
+    ),
+    {
+      title: "How much to move",
+      lines: business
+        ? [
+            {
+              op: "+",
+              label: `Back up to $0 at its deepest point in the week from ${shortDate(f.shortfall.date)}`,
+              value: d(first.coverCents),
+              detail: shortDate(first.worstDate),
+            },
+            { op: "+", label: "Rounded up to the next $50", value: d(first.paceCents) },
+          ]
+        : [
+            { op: "+", label: "Back up to $0", value: d(first.coverCents) },
+            {
+              op: "+",
+              label: `Usual day-to-day spending from it until ${shortDate(first.worstDate)}`,
+              value: d(first.paceCents),
+              detail: `${usdCents(f.paceDailyCents, { cents: true })} a day for ${daysToWorst} days (the last 90 days, bills left out), rounded up to the next $50`,
+            },
+          ],
+      total: { label: "To move", value: d(needed), testId: "move-need-total" },
+    },
+  ];
+  if (moves.length > 1 || first.uncoveredCents > 0)
+    steps.push({
+      title: "Where it comes from",
+      lines: moves.map((m) => ({
+        op: "+" as const,
+        label: `From ${accountName(m.fromAccountId)}`,
+        value: d(m.cents),
+      })),
+      total: { label: "Moved", value: d(needed - first.uncoveredCents) },
+    });
+  for (const m of moves)
+    steps.push({
+      title: `Why ${accountName(m.fromAccountId)} can spare it`,
+      lines: [
+        {
+          op: "+",
+          label: `Its lowest point from ${shortDate(m.byDate)} on`,
+          value: d(m.sourceLowCents),
+          detail: `${shortDate(m.sourceLowDate)}, after its own bills${m.sourceFloorCents ? " and usual spending" : ""}`,
+        },
+        { op: "-", label: "This move", value: d(m.cents) },
+      ],
+      total: {
+        label: `Its lowest point after the move (it keeps ${m.sourceFloorCents ? `your ${usdCents(m.sourceFloorCents)} cushion` : "above $0"})`,
+        value: d(m.sourceLowCents - m.cents),
+      },
+    });
+  if (overdrawn.length) {
+    steps.push(
+      {
+        title: "Charges that would come out below $0",
+        lines: overdrawn.map((i) => {
+          const charges = chargesFor(i.sourceIds);
+          return {
+            op: "+" as const,
+            label: `${i.name}, ${shortDate(i.date)}`,
+            value: 1,
+            format: "number" as const,
+            detail: `leaves it at ${usdCents(i.balanceAfterCents)}`,
+            ...(charges.length ? { charges } : {}),
+          };
+        }),
+        total: { label: "Charges below $0", value: overdrawn.length, format: "number" },
+      },
+      {
+        title: "Fees avoided",
+        lines: [
+          { op: "+", label: "Charges below $0", value: overdrawn.length, format: "number" },
+          feeLine(first.fee, chargesFor),
+        ],
+        total: { label: "Fees avoided", value: d(fees), testId: "move-fees-total" },
+      },
+    );
+  }
+  return {
+    id: `move-${f.account.id}`,
+    title: `Keeping ${name} above $0`,
+    intro: business
+      ? `${name} goes below zero on ${shortDate(f.shortfall.date)} with only the bills that repeat in its history. Business income that does not arrive on a schedule is not counted, so this covers only its bills in the week from then; check again after a deposit.`
+      : `${name} goes below zero on ${shortDate(f.shortfall.date)} with only the bills and pay that repeat in its history. Moving money in by ${shortDate(first.byDate)} keeps it above zero, from accounts that can spare it for the whole next ${f.days.length} days.`,
+    steps,
+    ...(first.uncoveredCents > 0
+      ? {
+          notCounted: [
+            {
+              label: "Still short",
+              value: d(first.uncoveredCents),
+              reason: "no account can spare more without going below its own cushion or $0",
+            },
+          ],
+        }
+      : {}),
+    facts: [
+      { label: "Fees counted", value: "at most 3 a day, a common bank limit" },
+      business
+        ? {
+            label: "Where the money comes from",
+            value:
+              "another business account first, then personal checking, then savings (money you put into the business)",
+          }
+        : {
+            label: "Money from a business account",
+            value: "used only when personal accounts cannot cover it",
+          },
+    ],
+    links: [
+      { href: "#coming-up", label: "Every bill and paycheck, below" },
+      { href: "#cushion", label: "Your cushion and overdraft fee" },
+    ],
+  };
+}
+
+interface MoveRecord {
+  id: string;
+  toAccountId: string;
+  amountCents: number;
+  moveDate: string;
+  feesAvoidedCents: number;
+  feePerItemCents: number;
+  basis: { items: { name: string; date: string }[] };
+  feeIds: string[];
+  chargedCents: number;
+  savedCents: number;
+}
+
+/** The fees the user's moves avoided: each move's fees, less any overdraft fee that posted anyway. */
+export function feesSavedBreakdown(
+  moves: MoveRecord[],
+  accountName: (id: string) => string,
+  chargesFor: (ids: string[]) => Charge[],
+): Breakdown | null {
+  if (!moves.length) return null;
+  const d = (cents: number) => cents / 100;
+  const total = moves.reduce((s, m) => s + m.savedCents, 0);
+  const lines: BreakdownLine[] = [];
+  for (const m of moves) {
+    const n = m.basis.items.length;
+    lines.push({
+      op: "+",
+      label: `${usdCents(m.amountCents)} into ${accountName(m.toAccountId)}, ${shortDate(m.moveDate)}`,
+      value: d(m.feesAvoidedCents),
+      detail: n
+        ? `${n} ${n === 1 ? "charge" : "charges"} would have come out below $0 (${m.basis.items.map((i) => i.name).join(", ")}), at ${usdCents(m.feePerItemCents, { cents: true })} each`
+        : "no charge would have come out below $0 after the moves before it",
+    });
+    if (m.chargedCents > 0)
+      lines.push({
+        op: "-",
+        label: `Overdraft fees that posted anyway on ${accountName(m.toAccountId)}`,
+        value: d(Math.min(m.chargedCents, m.feesAvoidedCents)),
+        charges: chargesFor(m.feeIds),
+      });
+  }
+  return {
+    id: "fees-saved",
+    title: "Fees avoided by moving money",
+    intro:
+      "Each move you made to keep an account above $0, with the fees it avoided as worked out that day: the charges that would have come out below $0 times your bank's fee. An overdraft fee that still posted on that account is taken off.",
+    steps: [{ lines, total: { label: "Fees avoided", value: d(total), testId: "fees-saved-total" } }],
+    links: [{ href: "#moves", label: "Your moves" }],
+  };
+}
+
+/** Overdraft, returned-payment and late fees in the last 12 months, down to the charges. */
+export function feesPaidBreakdown(
+  cash: CashForecast,
+  chargesFor: (ids: string[]) => Charge[],
+): Breakdown | null {
+  if (!cash.feesCents) return null;
+  const charges = chargesFor(cash.feeIds);
+  return {
+    id: "fees-paid",
+    title: "Bank fees in the last 12 months",
+    intro: "Overdraft, returned-payment and late fees charged to your accounts in the last 12 months.",
+    steps: [
+      {
+        lines: [
+          {
+            op: "+",
+            label: `${charges.length} ${charges.length === 1 ? "fee" : "fees"}`,
+            value: cash.feesCents / 100,
+            charges,
+          },
+        ],
+        total: { label: "Fees paid", value: cash.feesCents / 100, testId: "fees-paid-total" },
+      },
+    ],
+    links: [{ href: "/spending", label: "Spending" }],
   };
 }

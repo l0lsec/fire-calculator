@@ -30,7 +30,7 @@ describe("migrations", () => {
     const tables = await t.pg.query<{ tablename: string; rowsecurity: boolean }>(
       "select tablename, rowsecurity from pg_tables where schemaname = 'fire' order by tablename",
     );
-    expect(tables.rows.length).toBe(23);
+    expect(tables.rows.length).toBe(24);
     for (const row of tables.rows) expect(row.rowsecurity).toBe(true);
   });
 });
@@ -235,7 +235,36 @@ describe("household isolation", () => {
         nextDate: "2026-12-23",
       })
     ).id;
+  const move = (fromAccountId: string, toAccountId: string) => ({
+    fromAccountId,
+    toAccountId,
+    amountCents: 80_000,
+    moveDate: "2026-11-30",
+    shortfallDate: "2026-12-01",
+    feesAvoidedCents: 3_500,
+    feePerItemCents: 3_500,
+    feeSource: "typical",
+    basis: { items: [], feeIds: [] },
+  });
+  const moveOfA = async () => (await repos.addCashMove(db, A.scope, move(A.accountId, A.accountId))).id;
   const probes: Record<string, () => Promise<void>> = {
+    listCashMoves: async () => {
+      await moveOfA();
+      expect((await repos.listCashMoves(db, B.scope)).every((r) => own(r, B))).toBe(true);
+    },
+    addCashMove: async () => {
+      await expect(repos.addCashMove(db, B.scope, move(A.accountId, B.accountId))).rejects.toBeInstanceOf(
+        NotOwnedError,
+      );
+      await expect(repos.addCashMove(db, B.scope, move(B.accountId, A.accountId))).rejects.toBeInstanceOf(
+        NotOwnedError,
+      );
+    },
+    deleteCashMove: async () => {
+      const id = await moveOfA();
+      expect(await repos.deleteCashMove(db, B.scope, id)).toBeNull();
+      expect((await repos.listCashMoves(db, A.scope)).some((r) => r.id === id)).toBe(true);
+    },
     listScheduledBills: async () => {
       await billOfA();
       expect((await repos.listScheduledBills(db, B.scope)).every((r) => own(r, B))).toBe(true);

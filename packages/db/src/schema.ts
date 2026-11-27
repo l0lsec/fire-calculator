@@ -487,6 +487,46 @@ export const scheduledBills = fire.table(
   (t) => [index("scheduled_bills_household_idx").on(t.householdId)],
 );
 
+/**
+ * Money the user moved (or scheduled) between their accounts to avoid an
+ * overdraft, as Safe to spend suggested. The forecast counts it until its
+ * deposit shows up; the fees it avoided are kept as worked out on the day.
+ */
+export const cashMoves = fire.table(
+  "cash_moves",
+  {
+    id: id(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    fromAccountId: uuid("from_account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    toAccountId: uuid("to_account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    amountCents: cents("amount_cents").notNull(),
+    /** The day it is to arrive (the suggestion's "by" date). */
+    moveDate: date("move_date", { mode: "string" }).notNull(),
+    /** The day the account would first have gone below zero. */
+    shortfallDate: date("shortfall_date", { mode: "string" }).notNull(),
+    feesAvoidedCents: cents("fees_avoided_cents").notNull(),
+    feePerItemCents: cents("fee_per_item_cents").notNull(),
+    /** "yours", "history" or "typical": where the fee per item came from. */
+    feeSource: text("fee_source").notNull(),
+    /** The charges that would have come out while overdrawn, and the past fees the fee came from. */
+    basis: jsonb("basis")
+      .$type<{
+        items: { name: string; date: string; cents: number; balanceAfterCents: number }[];
+        feeIds: string[];
+      }>()
+      .notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("cash_moves_household_idx").on(t.householdId)],
+);
+
 /** Alert thresholds and Mac notification preferences. */
 export const alertSettings = fire.table("alert_settings", {
   householdId: uuid("household_id")
@@ -497,6 +537,8 @@ export const alertSettings = fire.table("alert_settings", {
   billLeadDays: integer("bill_lead_days").notNull().default(5),
   macNotifications: boolean("mac_notifications").notNull().default(true),
   weeklySummary: boolean("weekly_summary").notNull().default(true),
+  /** What the bank charges per overdraft, when the user sets it; null uses the history. */
+  overdraftFeeCents: cents("overdraft_fee_cents"),
   lastWeeklySummaryAt: timestamp("last_weekly_summary_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -571,4 +613,5 @@ export const HOUSEHOLD_TABLES = {
   alertSettings,
   apiTokens,
   scheduledBills,
+  cashMoves,
 } as const;

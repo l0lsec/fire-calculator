@@ -7,8 +7,21 @@ import { ButtonLink, Card, Disclaimer, Notice } from "@/components/ui";
 import { requireContext } from "@/lib/auth/context";
 import { usdCents } from "@/lib/format";
 import { loadInsights } from "@/server/insights";
-import { accountLowBreakdown, safeBreakdown } from "@/server/insights/breakdowns";
-import { addBillAction, removeBillAction, saveCushionAction } from "./actions";
+import {
+  accountLowBreakdown,
+  feesPaidBreakdown,
+  feesSavedBreakdown,
+  movePlanBreakdown,
+  safeBreakdown,
+} from "@/server/insights/breakdowns";
+import {
+  addBillAction,
+  recordMoveAction,
+  removeBillAction,
+  removeMoveAction,
+  restoreMoveAction,
+  saveCushionAction,
+} from "./actions";
 
 export const metadata = { title: "Safe to spend | FIRE Planner" };
 
@@ -43,7 +56,8 @@ const dollarsIn = (cents: number) => (cents / 100).toLocaleString("en-US", { max
 
 export default async function SafeToSpendPage() {
   const ctx = await requireContext();
-  const { cash, connected, scheduledBills, charges } = await loadInsights(ctx);
+  const { cash, connected, scheduledBills, charges, moves, feesSavedCents, settings } =
+    await loadInsights(ctx);
   const sp = cash.spendable;
   const names = new Map(
     cash.accounts.map((f) => [
@@ -81,6 +95,18 @@ export default async function SafeToSpendPage() {
     ? `until ${short(sp.nextPayday.date)}`
     : `over the next ${cash.horizonDays} days`;
   const shortAccounts = cash.accounts.filter((f) => f.role === "spending" && f.shortfall);
+  const chargesFor = (ids: string[]) => charges.byIds(ids);
+  const nameOf = (id: string) => names.get(id) ?? "an account";
+  const plans = cash.accounts
+    .filter((f) => f.shortfall)
+    .map((f) => {
+      const ms = cash.transfers.filter((t) => t.toAccountId === f.account.id);
+      return { f, moves: ms, breakdown: movePlanBreakdown(f, ms, nameOf, chargesFor) };
+    })
+    .filter((p) => p.moves.length);
+  const savedBreakdown = feesSavedBreakdown(moves, nameOf, chargesFor);
+  const paidBreakdown = feesPaidBreakdown(cash, chargesFor);
+  const showFees = plans.length > 0 || moves.length > 0 || cash.feesCents > 0;
   const upcomingItems = cash.upcoming;
   const chart = sp.days.map((d) => ({
     label: short(d.date),
@@ -141,9 +167,13 @@ export default async function SafeToSpendPage() {
                 {names.get(f.account.id)} goes to {usdCents(s.cents)} on {short(s.date)}
                 {s.cause ? ` when ${s.cause} comes out` : ""}
                 {s.worstCents < s.cents ? `, and to ${usdCents(s.worstCents)} by ${short(s.worstDate)}` : ""}.{" "}
-                {move
-                  ? `Move ${usdCents(move.cents)} from ${names.get(move.fromAccountId)} by ${short(move.byDate)} to avoid an overdraft.`
-                  : "Hold off on spending from it until money comes in."}
+                {move ? (
+                  <a href="#moves" className="font-medium underline">
+                    See the plan to avoid overdraft fees
+                  </a>
+                ) : (
+                  "No account can spare the money, so hold off on spending from it until money comes in."
+                )}
               </Notice>
             );
           })}
@@ -153,14 +183,146 @@ export default async function SafeToSpendPage() {
               {short(sp.paceRunsOut)}. Keeping to {usdCents(sp.perDayCents)} a day avoids it.
             </Notice>
           ) : null}
-          {cash.feesCents > 0 ? (
-            <p className="text-xs text-ink-3" data-testid="safe-fees">
-              You paid {usdCents(cash.feesCents)} in overdraft, returned-payment and late fees in the last 12
-              months.
-            </p>
-          ) : null}
         </div>
       </Card>
+
+      {showFees ? (
+        <Card id="moves" title="Avoid overdraft fees">
+          <div className="flex flex-col gap-5">
+            {plans.map(({ f, moves: ms, breakdown: b }, pi) => {
+              const s = f.shortfall as NonNullable<typeof f.shortfall>;
+              const first = ms[0] as (typeof ms)[number];
+              const fees = ms.reduce((t, m) => t + m.feesAvoidedCents, 0);
+              const count = ms.reduce((t, m) => t + m.overdrawn.length, 0);
+              return (
+                <div key={f.account.id} className="flex flex-col gap-2" data-testid="move-plan">
+                  <p className="font-medium">
+                    {ms.length === 1
+                      ? `Move ${usdCents(first.cents)} from ${nameOf(first.fromAccountId)} to ${nameOf(f.account.id)} by ${day(first.byDate)}`
+                      : `Move ${usdCents(ms.reduce((t, m) => t + m.cents, 0))} into ${nameOf(f.account.id)} by ${day(first.byDate)}`}
+                  </p>
+                  <p className="text-sm text-ink-2">
+                    It goes to {usdCents(first.coverDays ? -first.coverCents : s.worstCents)} by{" "}
+                    {short(first.worstDate)}
+                    {s.cause ? `, starting when ${s.cause} comes out on ${short(s.date)}` : ""}.{" "}
+                    {first.coverDays
+                      ? `This covers its bills for the next ${first.coverDays} days. Business income that does not arrive on a schedule is not counted, so check again after a deposit.`
+                      : "This covers that and your usual spending from it until then."}
+                    {first.uncoveredCents > 0
+                      ? ` It is still ${usdCents(first.uncoveredCents)} short: no other account can spare more, so hold off on spending from it.`
+                      : ""}
+                  </p>
+                  {fees > 0 ? (
+                    <p className="text-sm text-ink-2" data-testid="move-fees">
+                      Avoids about <span className="num font-medium text-accent">{usdCents(fees)}</span> in
+                      fees: {count} {count === 1 ? "charge" : "charges"} would come out below $0, at{" "}
+                      {usdCents(first.fee.perItemCents, { cents: true })} each (
+                      {first.fee.source === "history"
+                        ? first.fee.ownAccount
+                          ? "what this account was charged before"
+                          : "what your other accounts were charged before"
+                        : first.fee.source === "yours"
+                          ? "the fee you set"
+                          : "a typical bank fee"}
+                      ).
+                    </p>
+                  ) : null}
+                  {b ? (
+                    <DrillButton breakdown={b} label="How this plan is worked out" testId="move-drill" />
+                  ) : null}
+                  <ul className="flex flex-col gap-2">
+                    {ms.map((m, mi) => (
+                      <li
+                        key={`${m.fromAccountId}-${m.toAccountId}`}
+                        className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                      >
+                        {ms.length > 1 ? (
+                          <span>
+                            <span className="num font-medium">{usdCents(m.cents)}</span> from{" "}
+                            {nameOf(m.fromAccountId)}
+                          </span>
+                        ) : null}
+                        <ButtonForm
+                          action={recordMoveAction}
+                          label={ms.length > 1 ? "I moved this" : "I moved it"}
+                          variant={pi === 0 && mi === 0 ? "primary" : "secondary"}
+                          hidden={{ fromAccountId: m.fromAccountId, toAccountId: m.toAccountId }}
+                          undo={removeMoveAction}
+                          testId="move-record"
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-ink-3">
+                    Tap it once you have moved the money or scheduled it at your bank. The forecast then
+                    counts it until it shows up in your accounts.
+                  </p>
+                </div>
+              );
+            })}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {moves.length ? (
+                <div className="flex flex-col gap-1" data-testid="fees-saved">
+                  <p className="text-sm text-ink-3">Fees avoided by moving money</p>
+                  <p className="num text-2xl font-semibold text-accent">{usdCents(feesSavedCents)}</p>
+                  <p className="text-xs text-ink-3">
+                    {moves.length} {moves.length === 1 ? "move" : "moves"} since{" "}
+                    {short(moves[0]?.moveDate ?? cash.asOf)}
+                  </p>
+                  {savedBreakdown ? (
+                    <DrillButton breakdown={savedBreakdown} testId="fees-saved-drill" />
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-1" data-testid="safe-fees">
+                <p className="text-sm text-ink-3">Bank fees you paid in the last 12 months</p>
+                <p className={`num text-2xl font-semibold ${cash.feesCents > 0 ? "text-bad" : ""}`}>
+                  {usdCents(cash.feesCents)}
+                </p>
+                <p className="text-xs text-ink-3">Overdraft, returned-payment and late fees</p>
+                {paidBreakdown ? <DrillButton breakdown={paidBreakdown} testId="fees-paid-drill" /> : null}
+              </div>
+            </div>
+
+            {moves.length ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-ink-3">Your moves</p>
+                <ul className="divide-y divide-line" data-testid="moves-list">
+                  {[...moves].reverse().map((m) => (
+                    <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                      <span className="min-w-0">
+                        <span className="num font-medium">{usdCents(m.amountCents)}</span> from{" "}
+                        {nameOf(m.fromAccountId)} to {nameOf(m.toAccountId)}, {short(m.moveDate)}{" "}
+                        <span className="text-xs text-ink-3">
+                          {m.status === "arrived"
+                            ? `· arrived ${short(m.arrivedOn ?? m.moveDate)}`
+                            : m.status === "counted"
+                              ? "· counted in the forecast until it shows up"
+                              : "· not seen in your accounts, so the bank balance is used"}
+                          {m.chargedCents > 0
+                            ? ` · ${usdCents(m.chargedCents, { cents: true })} in fees posted anyway`
+                            : ""}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <span className="num text-accent">saved {usdCents(m.savedCents)}</span>
+                        <ButtonForm
+                          action={removeMoveAction}
+                          label="Remove"
+                          hidden={{ id: m.id }}
+                          undo={restoreMoveAction}
+                          testId="move-remove"
+                        />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
 
       <Card title="Next 30 days">
         <CashChart data={chart} cushion={cash.cushionCents / 100} />
@@ -178,6 +340,7 @@ export default async function SafeToSpendPage() {
                     <span className="text-xs text-ink-3">
                       {KIND[i.kind]}
                       {i.scheduledId ? ", added by you" : ""}
+                      {i.moveId ? ", a move you made" : ""}
                       {i.late ? ", was due earlier" : ""}
                       {i.confidence === "likely" ? ", seen twice" : ""} · {names.get(i.accountId)}
                     </span>
@@ -318,7 +481,7 @@ export default async function SafeToSpendPage() {
         </div>
       </Card>
 
-      <Card title="Your cushion">
+      <Card id="cushion" title="Your cushion">
         <ActionForm
           action={saveCushionAction}
           submitLabel="Save cushion"
@@ -331,6 +494,14 @@ export default async function SafeToSpendPage() {
             hint="Safe to spend never counts this money. It is also the level for your low-balance alert."
             inputMode="decimal"
             defaultValue={dollarsIn(cash.cushionCents)}
+          />
+          <FormInput
+            name="overdraftFee"
+            label="Your bank's overdraft fee ($)"
+            hint="Used to work out the fees a move avoids. Leave it blank to use what your bank charged you before, or $35 if it never has."
+            inputMode="decimal"
+            placeholder="35"
+            defaultValue={settings.overdraftFeeCents == null ? "" : dollarsIn(settings.overdraftFeeCents)}
           />
         </ActionForm>
       </Card>

@@ -223,14 +223,52 @@ describe("safe to spend", () => {
       worstDate: "2026-12-01",
     });
     expect(f.spendable?.safeToSpendCents).toBe(0);
+    // By hand: -600 at its deepest on Dec 1, plus groceries of 30 a day for the 6 days to Dec 1 (180),
+    // is 780, rounded up to 800. Savings holds 3,000 all month, so it can spare it.
+    // Only rent comes out while it is overdrawn: one fee, at the 35 this bank charged before.
     expect(f.transfers).toEqual([
-      { fromAccountId: "sav", toAccountId: "chk", cents: 60_000, byDate: "2026-11-30" },
+      {
+        fromAccountId: "sav",
+        toAccountId: "chk",
+        cents: 80_000,
+        byDate: "2026-11-30",
+        coverCents: 60_000,
+        paceCents: 20_000,
+        worstDate: "2026-12-01",
+        sourceLowCents: 300_000,
+        sourceLowDate: "2026-11-30",
+        sourceFloorCents: 0,
+        overdrawn: [
+          expect.objectContaining({
+            name: "LANDLORD LLC",
+            date: "2026-12-01",
+            cents: 150_000,
+            balanceAfterCents: -60_000,
+          }),
+        ],
+        fee: { perItemCents: 3_500, source: "history", feeIds: expect.any(Array), ownAccount: true },
+        feesAvoidedCents: 3_500,
+        uncoveredCents: 0,
+        coverDays: null,
+      },
+      // The business account (500 against payroll of 1,000 on Dec 3) is planned after: its week from
+      // Dec 3 bottoms out at -500, covered exactly (bills only), from what savings has left.
+      expect.objectContaining({ fromAccountId: "sav", toAccountId: "biz", cents: 50_000, coverDays: 7 }),
     ]);
+    expect(f.transfers[0]?.fee.feeIds).toHaveLength(2);
     // The business account runs short too (500 against a 1,000 payroll on Dec 3), but stays out of the headline.
     const biz = f.accounts.find((a) => a.account.id === "biz");
     expect(biz?.role).toBe("business");
     expect(biz?.shortfall).toMatchObject({ date: "2026-12-03", cents: -50_000 });
-    expect(f.transfers.some((t) => t.toAccountId === "biz")).toBe(false);
+    expect(f.transfers.find((t) => t.toAccountId === "biz")).toMatchObject({
+      byDate: "2026-12-02",
+      coverCents: 50_000,
+      paceCents: 0,
+      worstDate: "2026-12-03",
+      // Payroll comes out below zero; the fee is the one charged on checking, not this account.
+      fee: { perItemCents: 3_500, source: "history", ownAccount: false },
+      feesAvoidedCents: 3_500,
+    });
     // Fees: one overdraft fee in the last 12 months.
     expect(f.feesCents).toBe(3_500);
   });
@@ -252,7 +290,17 @@ describe("shortfall depth", () => {
       worstCents: -65_000,
       worstDate: "2026-12-03",
     });
-    expect(f.transfers[0]).toMatchObject({ fromAccountId: "sav", cents: 65_000, byDate: "2026-11-30" });
+    // -650 on Dec 3 plus 8 days of groceries at 30 (240) is 890, rounded up to 900; rent and the gym
+    // fee both come out below zero, so two fees of 35 are avoided.
+    expect(f.transfers[0]).toMatchObject({
+      fromAccountId: "sav",
+      cents: 90_000,
+      byDate: "2026-11-30",
+      coverCents: 65_000,
+      paceCents: 25_000,
+      feesAvoidedCents: 7_000,
+    });
+    expect(f.transfers[0]?.overdrawn.map((i) => i.name)).toEqual(["LANDLORD LLC", "PLANET GYM"]);
     const alert = buildAlerts({
       asOf: AS_OF,
       recurring: [],
@@ -263,7 +311,7 @@ describe("shortfall depth", () => {
       cash: f,
     }).find((x) => x.kind === "overdraft-risk");
     expect(alert?.detail).toBe(
-      "Bills due before money comes in take it to -$600 (LANDLORD LLC on Dec 1), and to -$650 by Dec 3. Move $650 from Savings by Nov 30.",
+      "Bills due before money comes in take it to -$600 (LANDLORD LLC on Dec 1), and to -$650 by Dec 3. Move $900 from Savings by Nov 30 to avoid about $70 in fees.",
     );
   });
 });
@@ -320,7 +368,7 @@ describe("cash alerts", () => {
       title: "Overdraft risk: Checking on Dec 1",
     });
     expect(risk[0]?.detail).toContain("LANDLORD LLC on Dec 1");
-    expect(risk[0]?.detail).toContain("Move $600 from Savings by Nov 30");
+    expect(risk[0]?.detail).toContain("Move $800 from Savings by Nov 30 to avoid about $35 in fees.");
     // A committed shortfall already says it; no pace alert on top.
     expect(alerts.some((a) => a.kind === "spending-pace")).toBe(false);
   });
@@ -420,5 +468,130 @@ describe("bills added by hand", () => {
     // The savings bill is in the savings account's own forecast.
     const sav = f.accounts.find((a) => a.account.id === "sav");
     expect(sav?.items.map((i) => [i.date, i.deltaCents])).toEqual([["2026-12-02", -30_000]]);
+  });
+});
+
+describe("moving money to avoid overdrafts", () => {
+  const short = () => household({ checkingCents: 100_000, groceryCents: 9_000 });
+  const second = (balanceCents: number): CashAccount => ({
+    id: "chk2",
+    name: "Joint",
+    mask: "5555",
+    type: "depository",
+    subtype: "checking",
+    business: false,
+    balanceCents,
+  });
+
+  it("takes from another checking account first, keeping its cushion, then savings for the rest", () => {
+    const h = short();
+    // Joint checking holds 500 with nothing scheduled: it can spare 500 - 250 cushion = 250.
+    h.accounts.push(second(50_000));
+    const f = forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000 });
+    const toChk = (x: typeof f) => x.transfers.filter((t) => t.toAccountId === "chk");
+    expect(toChk(f).map((t) => [t.fromAccountId, t.cents, t.uncoveredCents])).toEqual([["sav", 80_000, 0]]);
+    // Savings can cover all of it, but Joint cannot: one move from the account that covers it whole.
+    // With 2,000 in Joint, it can (2,000 - 250 = 1,750 to spare) and comes first.
+    const rich = short();
+    rich.accounts.push(second(200_000));
+    const g = forecastCash({ asOf: AS_OF, ...rich, cushionCents: 25_000 });
+    expect(toChk(g).map((t) => [t.fromAccountId, t.cents, t.sourceFloorCents])).toEqual([
+      ["chk2", 80_000, 25_000],
+    ]);
+  });
+
+  it("splits the move when no one account can spare it all, and says what is left", () => {
+    const h = short();
+    const sav = h.accounts.find((a) => a.id === "sav") as CashAccount;
+    sav.balanceCents = 30_000;
+    h.accounts.push(second(55_000));
+    // Joint spares 550 - 250 = 300, savings 300: 600 of the 800 needed, 200 left uncovered.
+    // The business account holds 500 but owes payroll of 1,000 on Dec 3, so it has nothing to spare.
+    const f = forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000 });
+    expect(f.transfers.map((t) => [t.fromAccountId, t.cents, t.uncoveredCents])).toEqual([
+      ["chk2", 30_000, 20_000],
+      ["sav", 30_000, 20_000],
+    ]);
+    // By hand: 900 after the phone bill. With Joint's 300 alone, rent leaves 1,200 - 1,500 = -300, still a fee;
+    // with savings' 300 too it leaves exactly 0, no fee. So the second move is the one that avoids it.
+    expect(f.transfers.map((t) => t.feesAvoidedCents)).toEqual([0, 3_500]);
+  });
+
+  it("uses the fee you set, or a typical fee when the history has none", () => {
+    const h = short();
+    const mine = forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000, overdraftFeeCents: 2_900 });
+    expect(mine.transfers[0]?.fee).toEqual({ perItemCents: 2_900, source: "yours", feeIds: [] });
+    expect(mine.transfers[0]?.feesAvoidedCents).toBe(2_900);
+    const clean = short();
+    clean.classified = clean.classified.filter((c) => !c.tx.name.startsWith("OVERDRAFT"));
+    const typical = forecastCash({ asOf: AS_OF, ...clean, cushionCents: 25_000 });
+    expect(typical.transfers[0]?.fee).toEqual({ perItemCents: 3_500, source: "typical", feeIds: [] });
+    expect(typical.feesCents).toBe(0);
+    expect(typical.feeIds).toEqual([]);
+  });
+
+  it("counts at most three fees a day", () => {
+    const h = short();
+    // Four small bills on Dec 1 after rent: five charges below zero that day, three fees.
+    for (const name of ["WATER CO", "GAS CO", "TRASH CO", "ALARM CO"])
+      for (const d of ["2026-09-01", "2026-10-01", "2026-11-01"])
+        h.classified.push(c("chk", d, 2_000, name, "living_expense", "RENT_AND_UTILITIES_WATER"));
+    const f = forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000 });
+    expect(f.transfers[0]?.overdrawn).toHaveLength(3);
+    expect(f.transfers[0]?.feesAvoidedCents).toBe(10_500);
+  });
+
+  it("counts a move you made until its deposit shows up, then trusts the balance", () => {
+    const h = short();
+    const move = {
+      id: "m1",
+      fromAccountId: "sav",
+      toAccountId: "chk",
+      cents: 80_000,
+      date: "2026-11-30",
+      createdOn: AS_OF,
+    };
+    const waiting = forecastCash({ asOf: AS_OF, ...h, cushionCents: 25_000, moves: [move] });
+    const chk = waiting.accounts.find((a) => a.account.id === "chk");
+    // 900 + 800 - 1,500 = 200 on Dec 1: no shortfall and nothing more to move.
+    expect(chk?.shortfall).toBeNull();
+    expect(chk?.low).toEqual({ date: "2026-12-01", cents: 20_000 });
+    expect(waiting.transfers.filter((t) => t.toAccountId === "chk")).toEqual([]);
+    expect(waiting.accounts.find((a) => a.account.id === "sav")?.low.cents).toBe(220_000);
+    expect(chk?.items.find((i) => i.moveId === "m1")).toMatchObject({
+      name: "Move from Savings ...2222",
+      date: "2026-11-30",
+      deltaCents: 80_000,
+    });
+    expect(waiting.moves).toEqual([{ id: "m1", seenTxId: null, counted: true }]);
+
+    // The deposit lands (pending): the available balance already has it, so the move is not counted again.
+    const landed = short();
+    const chkAcct = landed.accounts.find((a) => a.id === "chk") as CashAccount;
+    chkAcct.balanceCents += 80_000;
+    landed.pending.push({
+      id: "p-move",
+      accountId: "chk",
+      date: AS_OF,
+      amountCents: -80_000,
+      name: "Online Transfer from SAV ...2222",
+      merchant: null,
+      pfcPrimary: "TRANSFER_IN",
+      pfcDetailed: "TRANSFER_IN_ACCOUNT_TRANSFER",
+      pending: true,
+    });
+    const seen = forecastCash({ asOf: AS_OF, ...landed, cushionCents: 25_000, moves: [move] });
+    expect(seen.moves).toEqual([{ id: "m1", seenTxId: "p-move", counted: false }]);
+    expect(seen.accounts.find((a) => a.account.id === "chk")?.low.cents).toBe(20_000);
+    expect(seen.accounts.find((a) => a.account.id === "chk")?.items.some((i) => i.moveId)).toBe(false);
+
+    // Never seen and more than a week past its date: no longer counted.
+    const stale = forecastCash({
+      asOf: AS_OF,
+      ...short(),
+      cushionCents: 25_000,
+      moves: [{ ...move, date: "2026-11-10", createdOn: "2026-11-09" }],
+    });
+    expect(stale.moves).toEqual([{ id: "m1", seenTxId: null, counted: false }]);
   });
 });

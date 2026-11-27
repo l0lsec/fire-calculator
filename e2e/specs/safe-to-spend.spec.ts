@@ -96,3 +96,68 @@ test("a bill added by hand is counted on its date, and Remove can be undone", as
   await expect(page.getByTestId("safe-bills")).toContainText("Life insurance premium");
   await expect.poll(amount).toBe(0);
 });
+
+test("an account that would go below zero gets a plan to move money in, and the fees it avoids are kept", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const user = await createVerifiedUser();
+  await signInContext(context, user, baseURL as string);
+  await page.goto("/dashboard");
+  await page.request.post("/api/plaid/link/exchange", {
+    data: { public_token: await fakePlaid.publicToken(), institution: null },
+  });
+  await page.goto("/safe-to-spend");
+  // Checking holds 8,300 and savings 22,000: a 10,000 bill tomorrow overdraws checking.
+  const form = page.getByTestId("bill-form");
+  await form.getByLabel("Name").fill("Roof repair");
+  await form.getByLabel("Amount ($)").fill("10,000");
+  await form.getByLabel("How often").selectOption("yearly");
+  await form.getByLabel("Next due").fill("2026-11-26");
+  await form.getByRole("button", { name: "Add bill" }).click();
+  await expect(form).toContainText("Added Roof repair.");
+  await page.reload();
+
+  const plan = page.getByTestId("move-plan");
+  await expect(plan).toContainText(
+    /Move \$[\d,]+ from High Yield Savings \.\.\.2222 to Everyday Checking \.\.\.1111 by/,
+  );
+  await expect(plan.getByTestId("move-fees")).toContainText(
+    /Avoids about \$[\d,]+ in fees: \d+ charges would come out below \$0, at \$35\.00 each \(a typical bank fee\)/,
+  );
+  await page.getByRole("link", { name: "See the plan to avoid overdraft fees" }).click();
+  await expect(page).toHaveURL(/#moves$/);
+
+  // The plan opens what it is made of, and every step adds up.
+  await plan.getByTestId("move-drill").click();
+  await expect(plan.getByTestId("move-need-total")).toContainText("To move");
+  await expect(plan.getByTestId("move-fees-total")).toContainText("Fees avoided");
+  await expect(plan).not.toContainText("does not add up");
+
+  // I moved it: the forecast counts it, the plan goes away and the fees avoided are kept.
+  await plan.getByTestId("move-record").click();
+  const toast = page.getByTestId("toast");
+  await expect(toast).toContainText(
+    /Counted the \$[\d,.]+ move\. Everyday Checking's lowest point is now \$[\d,.]+\./,
+  );
+  await page.reload();
+  await expect(page.getByTestId("move-plan")).toHaveCount(0);
+  const list = page.getByTestId("moves-list");
+  await expect(list).toContainText("counted in the forecast until it shows up");
+  await expect(page.getByTestId("safe-upcoming")).toContainText("a move you made");
+  const saved = page.getByTestId("fees-saved");
+  await expect(saved).toContainText(/\$[1-9][\d,]*/);
+  await saved.getByTestId("fees-saved-drill").click();
+  await expect(saved.getByTestId("fees-saved-total")).toContainText("Fees avoided");
+  await expect(saved).not.toContainText("does not add up");
+
+  // Remove takes it out of the forecast; Undo puts it back.
+  await list.getByTestId("move-remove").click();
+  await expect(page.getByTestId("toast")).toContainText("The forecast no longer counts it.");
+  await page.getByTestId("toast").getByTestId("toast-undo").click();
+  await expect(page.getByText("Undone.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("moves-list")).toContainText("counted in the forecast");
+  await expect(page.getByTestId("move-plan")).toHaveCount(0);
+});

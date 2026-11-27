@@ -210,7 +210,7 @@ export function buildAlerts(opts: {
           `${s.cause ? ` (${s.cause} on ${shortDate(s.date)})` : ""}` +
           `${s.worstCents < s.cents ? `, and to ${usd(s.worstCents)} by ${shortDate(s.worstDate)}` : ""}.` +
           (move
-            ? ` Move ${usd(move.cents)} from ${names.get(move.fromAccountId) ?? "another account"} by ${shortDate(move.byDate)}.`
+            ? ` Move ${usd(move.cents)} from ${names.get(move.fromAccountId) ?? "another account"} by ${shortDate(move.byDate)}${move.feesAvoidedCents > 0 ? ` to avoid about ${usd(move.feesAvoidedCents)} in fees` : ""}.`
             : " Hold off on spending from it until then."),
         date: s.date,
         amountCents: s.worstCents,
