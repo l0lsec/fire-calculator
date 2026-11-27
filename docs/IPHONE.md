@@ -44,6 +44,19 @@ FinanceKit is a managed entitlement: Apple must approve it for your team first.
    pick it as the run destination, and press Run.
 4. On the phone: **Paste pairing code**, **Allow Wallet access**, **Sync now**.
 
+### Background sync is off until Apple grants the extension
+
+Apple granted FinanceKit for `com.showupshowout.fireplanner` only (case
+23759728, November 2026). The background-delivery extension
+(`com.showupshowout.fireplanner.BackgroundDelivery`) needs its own grant, so it
+cannot be signed yet, and the app target no longer builds or embeds it. Until
+then the phone syncs whenever you open the app or tap **Sync now**.
+
+When Apple adds the extension's bundle ID: in Xcode, select the FIREPlannerSync
+target, add BackgroundDelivery back under Build Phases > Target Dependencies,
+and add the "Embed ExtensionKit Extensions" phase with `BackgroundDelivery.appex`
+(or revert the commit "Build the iPhone app without the background extension").
+
 Privacy policy for the app: [PRIVACY-SYNC.md](PRIVACY-SYNC.md).
 
 What FinanceKit does not report: the Apple Card APR. The card arrives in the

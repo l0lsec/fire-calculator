@@ -94,12 +94,10 @@
 				AC0000000000000000000001 /* Sources */,
 				A60000000000000000000001 /* Frameworks */,
 				AD0000000000000000000001 /* Resources */,
-				A40000000000000000000001 /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				AE0000000000000000000001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A50000000000000000000001 /* App */,
