@@ -53,8 +53,9 @@ struct ContentView: View {
                     case .authorized:
                         Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                     case .denied:
-                        Text("Wallet access is off. Turn it on in Settings > Apps > FIRE Planner Sync > Wallet, then come back.")
+                        Text("Wallet access is off. Tap Open Settings, turn on the switch for your Wallet data, then come back here.")
                             .font(.callout)
+                        Button("Open Settings") { model.openSettings() }
                     default:
                         Button("Allow Wallet access") { Task { await model.allowWalletAccess() } }
                             .disabled(!paired)
@@ -99,7 +100,7 @@ struct ContentView: View {
                             .font(.callout)
                         }
                     }
-                    Text("After this, new activity syncs on its own in the background.")
+                    Text("After this, it syncs again each time you open this app.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } header: {

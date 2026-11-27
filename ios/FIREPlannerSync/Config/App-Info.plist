@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSFinancialDataDescription</key>
+	<key>NSFinancialDataUsageDescription</key>
 	<string>FIRE Planner Sync sends your Apple Card, Apple Cash and Savings balances and transactions, encrypted, to FIRE Planner on your own Mac so it can measure your spending and plan your debt payoff.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>

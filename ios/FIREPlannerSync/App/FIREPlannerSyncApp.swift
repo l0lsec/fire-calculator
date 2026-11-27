@@ -110,7 +110,14 @@ final class SyncModel {
             }
         } catch {
             walletLog.error("request failed: \(String(reflecting: error), privacy: .public)")
-            message = "Wallet access did not work. Try again, or turn it on in Settings > Apps > FIRE Planner Sync > Wallet."
+            message = "Wallet access did not work. Tap Allow Wallet access again. If no question appears, close this app fully and reopen it."
+        }
+    }
+
+    /// Opens this app's own page in Settings, where iOS keeps the Wallet switch.
+    func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 

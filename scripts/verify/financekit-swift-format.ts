@@ -14,11 +14,19 @@ import {
   Snapshot,
 } from "../../apps/web/src/server/financekit/format";
 
+const root = new URL("../../ios/FIREPlannerSync/", import.meta.url).pathname;
+
+// iOS refuses the Wallet permission sheet, silently, unless the app declares
+// this exact key with a reason (a near-miss name like NSFinancialDataDescription
+// is ignored, and the app then reads as "denied" with no switch in Settings).
+const infoPlist = readFileSync(join(root, "Config/App-Info.plist"), "utf8");
+if (!/<key>NSFinancialDataUsageDescription<\/key>\s*<string>[^<]+<\/string>/.test(infoPlist))
+  throw new Error("App-Info.plist needs NSFinancialDataUsageDescription with a reason");
+
 if (process.platform !== "darwin") {
   console.log("SKIP: needs macOS and swiftc");
   process.exit(0);
 }
-const root = new URL("../../ios/FIREPlannerSync/", import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), "fk-format-"));
 try {
   const bin = join(dir, "format-check");
