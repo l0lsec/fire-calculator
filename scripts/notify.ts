@@ -8,6 +8,7 @@ import { categoryName, loadInsights } from "../apps/web/src/server/insights";
 import { todayISO } from "../apps/web/src/server/today";
 import { createClient } from "../packages/db/src/client";
 import { scopeFor } from "../packages/db/src/db";
+import { testHouseholdIds } from "../packages/db/src/repos/household";
 import { markAlertsNotified, setAlertSettings } from "../packages/db/src/repos/insights";
 import { households } from "../packages/db/src/schema";
 import { expectedCents } from "../packages/spending/src";
@@ -42,7 +43,10 @@ const { db, close } = createClient(url, { max: 2 });
 try {
   const asOf = todayISO();
   const sunday = new Date(`${asOf}T12:00:00Z`).getUTCDay() === 0;
+  // End-to-end test households share the local database: never notify about them.
+  const tests = await testHouseholdIds(db);
   for (const h of await db.select({ id: households.id }).from(households)) {
+    if (tests.has(h.id)) continue;
     const scope = scopeFor(h.id);
     const ctx = { db, scope };
     const insights = await loadInsights(ctx, asOf);

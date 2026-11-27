@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as repos from "../src";
 import { generateKeySpec, loadKeyring, open, reseal, seal, tokenAad } from "../src/crypto";
 import { type Db, type HouseholdScope, NotOwnedError, scopeFor } from "../src/db";
+import * as schema from "../src/schema";
 import { createTestDb, type TestDb } from "../src/testing";
 
 let t: TestDb;
@@ -609,6 +610,8 @@ describe("household isolation", () => {
     "databaseReachable",
     "findLiveApiToken",
     "touchApiToken",
+    // System lookup for the daily sync and notifier: which households are e2e test users.
+    "testHouseholdIds",
   ]);
 
   it("a cross-household read or write through every repository function touches nothing", async () => {
@@ -668,6 +671,33 @@ describe("household isolation", () => {
     expect(after.apr).toBe(0.199);
     expect(after.aprSource).toBe("user");
     expect(after.balanceCents).toBe(777_00);
+  });
+});
+
+describe("test households", () => {
+  it("are the households whose every member signed up with an @example.test address", async () => {
+    const db = t.db;
+    // A bare test database has no Supabase auth: nothing is skipped.
+    expect(await repos.testHouseholdIds(db)).toEqual(new Set());
+    await t.pg.exec(
+      "create schema if not exists auth; create table if not exists auth.users (id uuid primary key, email text)",
+    );
+    const user = async (email: string) => {
+      const id = crypto.randomUUID();
+      await t.pg.query("insert into auth.users (id, email) values ($1, $2)", [id, email]);
+      return id;
+    };
+    const e2e = await repos.createHouseholdForUser(db, await user("e2e-1-abc@example.test"), "E2E");
+    const real = await repos.createHouseholdForUser(db, await user("someone@gmail.com"), "Real");
+    const ids = await repos.testHouseholdIds(db);
+    expect(ids.has(e2e)).toBe(true);
+    expect(ids.has(real)).toBe(false);
+    // A member whose sign-in no longer exists counts as no one.
+    const orphan = await repos.createHouseholdForUser(db, crypto.randomUUID(), "Orphan");
+    expect((await repos.testHouseholdIds(db)).has(orphan)).toBe(true);
+    // A real person in the household keeps it in, even with a test user beside them.
+    await db.insert(schema.householdMembers).values({ householdId: e2e, userId: await user("me@gmail.com") });
+    expect((await repos.testHouseholdIds(db)).has(e2e)).toBe(false);
   });
 });
 

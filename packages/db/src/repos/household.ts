@@ -311,3 +311,27 @@ export async function databaseReachable(db: Db): Promise<boolean> {
     return false;
   }
 }
+
+/** The address domain end-to-end test users sign up with (a reserved test domain). */
+export const TEST_EMAIL_DOMAIN = "@example.test";
+
+/**
+ * Households with no real person in them: every member is an end-to-end test
+ * user, or a sign-in that no longer exists (left behind by a test). The e2e run
+ * shares the local database, so the daily sync and Mac notifier skip these.
+ * Reads the Supabase auth users; where that table does not exist (a bare test
+ * database), nothing is skipped.
+ */
+export async function testHouseholdIds(db: Db): Promise<Set<string>> {
+  try {
+    const res = await db.execute<{ id: string }>(
+      sql`select m.household_id as id from fire.household_members m left join auth.users u on u.id = m.user_id
+          group by m.household_id
+          having not coalesce(bool_or(u.email is not null and lower(u.email) not like ${`%${TEST_EMAIL_DOMAIN}`}), false)`,
+    );
+    const rows = Array.isArray(res) ? res : ((res as { rows?: { id: string }[] }).rows ?? []);
+    return new Set(rows.map((r) => r.id));
+  } catch {
+    return new Set();
+  }
+}
