@@ -111,6 +111,8 @@ export const plaidItems = fire.table(
     plaidItemId: text("plaid_item_id").notNull(),
     institutionId: text("institution_id"),
     institutionName: text("institution_name"),
+    /** The bank's website from Plaid, for "Open your bank"; "" when Plaid has none, null until looked up. */
+    institutionUrl: text("institution_url"),
     accessTokenCiphertext: text("access_token_ciphertext").notNull(),
     accessTokenIv: text("access_token_iv").notNull(),
     keyVersion: integer("key_version").notNull(),

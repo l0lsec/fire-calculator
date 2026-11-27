@@ -18,6 +18,7 @@ import {
   upsertTransactions,
 } from "@fire/db";
 import { PlaidApiError, type PlaidTransaction } from "@fire/plaid";
+import { bankUrl } from "../../../lib/bank-url";
 import { todayISO } from "../../today";
 import { type PlaidDeps, withAccessToken } from "../config";
 import { accountValues, costBasisCents, debtFieldsFrom, holdingsByAccount } from "../mapping";
@@ -69,6 +70,31 @@ function txValues(t: PlaidTransaction, accountId: string): TransactionValues {
   };
 }
 
+/**
+ * Look up the bank's name and website once, for "Open your bank" links. Best
+ * effort: a failure leaves it for the next sync and never fails this one.
+ */
+async function rememberInstitution(
+  ctx: Ctx,
+  deps: PlaidDeps,
+  item: NonNullable<Awaited<ReturnType<typeof getItem>>>,
+  fromPlaid: string | null | undefined,
+) {
+  if (item.institutionUrl !== null) return;
+  const id = item.institutionId ?? fromPlaid ?? null;
+  if (!id) return;
+  try {
+    const { institution } = await deps.plaid.institutionsGetById(id);
+    await updateItem(ctx.db, ctx.scope, item.id, {
+      institutionId: id,
+      institutionName: item.institutionName ?? institution.name,
+      institutionUrl: bankUrl(institution.url) ?? "",
+    });
+  } catch {
+    // Try again on the next sync.
+  }
+}
+
 export async function syncItem(
   ctx: Ctx,
   deps: PlaidDeps,
@@ -101,6 +127,7 @@ export async function syncItem(
       if (needAccounts) {
         const res = await deps.plaid.accountsGet(token);
         plaidAccounts = res.accounts;
+        await rememberInstitution(ctx, deps, item, res.item.institution_id);
         for (const a of res.accounts) {
           const row = await upsertPlaidAccount(ctx.db, ctx.scope, item.id, accountValues(a));
           accountIdByPlaid.set(a.account_id, row.id);

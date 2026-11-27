@@ -7,6 +7,7 @@ import { PlaidClient } from "@fire/plaid";
 import { FakePlaid, FIXTURE_AS_OF } from "@fire/plaid/fake";
 import { type Classified, forecastCash } from "@fire/spending";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { bankUrl } from "../src/lib/bank-url";
 import { type Breakdown, evaluateStep } from "../src/lib/breakdown";
 import { chargesTotal } from "../src/lib/charges";
 import {
@@ -250,5 +251,29 @@ describe("a business account's plan", () => {
     expect(total("move-low-total")).toBeCloseTo(-500, 2);
     expect(total("move-need-total")).toBeCloseTo(500, 2);
     expect(b.intro).toContain("Business income that does not arrive on a schedule is not counted");
+  });
+});
+
+describe("Open your bank", () => {
+  it("links each connected account to its bank's website, looked up once from Plaid", async () => {
+    const { ctx, chk, sav } = await shortHousehold();
+    const ins = await loadInsights(ctx);
+    expect(ins.banks[chk.id]).toEqual({ name: "Fixture Bank", url: "https://www.fixturebank.example/" });
+    expect(ins.banks[sav.id]).toEqual(ins.banks[chk.id]);
+  });
+
+  it("only ever links to an https website", () => {
+    expect(bankUrl("https://www.chase.com")).toBe("https://www.chase.com/");
+    expect(bankUrl("http://www.example-bank.com/login")).toBe("https://www.example-bank.com/login");
+    expect(bankUrl("www.navyfederal.org")).toBe("https://www.navyfederal.org/");
+    for (const bad of [
+      "javascript:alert(1)",
+      "data:text/html,hi",
+      "https://user:pw@bank.com",
+      "localhost",
+      "",
+      null,
+    ])
+      expect(bankUrl(bad)).toBeNull();
   });
 });

@@ -191,6 +191,15 @@ export class PlaidClient {
     return this.call("/item/get", { access_token: accessToken }, S.ItemGetResponse);
   }
 
+  /** A bank's name and website (optional metadata), for "Open your bank" links. */
+  institutionsGetById(institutionId: string) {
+    return this.call(
+      "/institutions/get_by_id",
+      { institution_id: institutionId, country_codes: ["US"], options: { include_optional_metadata: true } },
+      S.InstitutionGetResponse,
+    );
+  }
+
   accountsGet(accessToken: string) {
     return this.call("/accounts/get", { access_token: accessToken }, S.AccountsGetResponse);
   }

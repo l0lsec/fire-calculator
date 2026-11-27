@@ -323,6 +323,17 @@ export class FakePlaid {
         if (item instanceof Response) return item;
         return ok({ item: this.itemObj(item) });
       }
+      case "/institutions/get_by_id": {
+        if (String(body.institution_id) !== FIXTURE_INSTITUTION.id)
+          return err(400, "INVALID_INPUT", "INVALID_INSTITUTION", "unknown institution");
+        return ok({
+          institution: {
+            institution_id: FIXTURE_INSTITUTION.id,
+            name: FIXTURE_INSTITUTION.name,
+            url: FIXTURE_INSTITUTION.url,
+          },
+        });
+      }
       case "/accounts/get": {
         const item = this.item(body);
         if (item instanceof Response) return item;

@@ -74,6 +74,8 @@ export async function updateItem(
       | "accessTokenIv"
       | "keyVersion"
       | "institutionName"
+      | "institutionUrl"
+      | "institutionId"
     >
   >,
 ) {

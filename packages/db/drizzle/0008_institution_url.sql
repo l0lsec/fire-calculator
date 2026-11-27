@@ -1,0 +1,1 @@
+ALTER TABLE "fire"."plaid_items" ADD COLUMN "institution_url" text;

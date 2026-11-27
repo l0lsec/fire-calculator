@@ -3,7 +3,9 @@
 
 import { ButtonForm } from "@/components/action-form";
 import { DrillButton } from "@/components/breakdown";
+import { ButtonLink } from "@/components/ui";
 import { usdCents } from "@/lib/format";
+import type { BankLink } from "@/server/insights";
 import type { MovePlan } from "@/server/insights/breakdowns";
 import { recordMoveAction, removeMoveAction } from "./actions";
 
@@ -22,9 +24,12 @@ export function MovePlans({
   plans,
   nameOf,
   primary = true,
+  banks = {},
 }: {
   plans: MovePlan[];
   nameOf: (id: string) => string;
+  /** Account id to its bank's website: the move is started at the bank it leaves from. */
+  banks?: Record<string, BankLink>;
   /** Make the first "I moved it" the card's one primary action. */
   primary?: boolean;
 }) {
@@ -81,20 +86,38 @@ export function MovePlans({
                       {nameOf(m.fromAccountId)}
                     </span>
                   ) : null}
-                  <ButtonForm
-                    action={recordMoveAction}
-                    label={ms.length > 1 ? "I moved this" : "I moved it"}
-                    variant={primary && pi === 0 && mi === 0 ? "primary" : "secondary"}
-                    hidden={{ fromAccountId: m.fromAccountId, toAccountId: m.toAccountId }}
-                    undo={removeMoveAction}
-                    testId="move-record"
-                  />
+                  <span className="flex flex-wrap items-center gap-2">
+                    {(() => {
+                      // Start the move at the bank it leaves from (or, failing that, the one it goes to).
+                      const bank = banks[m.fromAccountId] ?? banks[m.toAccountId];
+                      return bank ? (
+                        <ButtonLink
+                          href={bank.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          variant="secondary"
+                          data-testid="move-bank"
+                        >
+                          Open {bank.name}
+                          <span className="sr-only"> (opens in a new tab)</span>
+                        </ButtonLink>
+                      ) : null;
+                    })()}
+                    <ButtonForm
+                      action={recordMoveAction}
+                      label={ms.length > 1 ? "I moved this" : "I moved it"}
+                      variant={primary && pi === 0 && mi === 0 ? "primary" : "secondary"}
+                      hidden={{ fromAccountId: m.fromAccountId, toAccountId: m.toAccountId }}
+                      undo={removeMoveAction}
+                      testId="move-record"
+                    />
+                  </span>
                 </li>
               ))}
             </ul>
             <p className="text-xs text-ink-3">
-              Tap it once you have moved the money or scheduled it at your bank. The forecast then counts it
-              until it shows up in your accounts.
+              Tap I moved it once you have moved the money or scheduled it at your bank. The forecast then
+              counts it until it shows up in your accounts.
             </p>
           </div>
         );

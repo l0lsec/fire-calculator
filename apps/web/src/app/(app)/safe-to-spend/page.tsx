@@ -56,7 +56,7 @@ const dollarsIn = (cents: number) => (cents / 100).toLocaleString("en-US", { max
 
 export default async function SafeToSpendPage() {
   const ctx = await requireContext();
-  const { cash, connected, scheduledBills, charges, moves, feesSavedCents, settings } =
+  const { cash, connected, scheduledBills, charges, moves, feesSavedCents, settings, banks } =
     await loadInsights(ctx);
   const sp = cash.spendable;
   const names = new Map(
@@ -183,7 +183,7 @@ export default async function SafeToSpendPage() {
       {showFees ? (
         <Card id="moves" title="Avoid overdraft fees">
           <div className="flex flex-col gap-5">
-            <MovePlans plans={plans} nameOf={nameOf} />
+            <MovePlans plans={plans} nameOf={nameOf} banks={banks} />
 
             <div className="grid gap-4 sm:grid-cols-2">
               {moves.length ? (

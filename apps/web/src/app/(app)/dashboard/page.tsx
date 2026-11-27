@@ -148,7 +148,7 @@ export default async function DashboardPage({
       {plans.length ? (
         <div className="mt-4 flex flex-col gap-5 border-t border-line pt-4" data-testid="dashboard-moves">
           <p className="text-sm font-medium">Avoid overdraft fees</p>
-          <MovePlans plans={plans} nameOf={nameOf} />
+          <MovePlans plans={plans} nameOf={nameOf} banks={insights.banks} />
         </div>
       ) : null}
       {savedDrill ? (

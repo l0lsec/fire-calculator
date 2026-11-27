@@ -17,7 +17,11 @@
 import type { PlaidAccount, PlaidTransaction } from "../schemas";
 
 export const FIXTURE_AS_OF = "2026-11-25";
-export const FIXTURE_INSTITUTION = { id: "ins_fixture", name: "Fixture Bank" };
+export const FIXTURE_INSTITUTION = {
+  id: "ins_fixture",
+  name: "Fixture Bank",
+  url: "https://www.fixturebank.example",
+};
 
 export interface FixtureData {
   accounts: PlaidAccount[];

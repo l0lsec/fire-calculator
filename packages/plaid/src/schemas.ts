@@ -51,6 +51,10 @@ export const PublicTokenExchangeResponse = z.object({ access_token: str, item_id
 export const AccountsGetResponse = z.object({ accounts: z.array(Account), item: Item, request_id: str });
 export const ItemGetResponse = z.object({ item: Item, request_id: str });
 export const ItemRemoveResponse = z.object({ request_id: str });
+export const InstitutionGetResponse = z.object({
+  institution: z.object({ institution_id: str, name: str, url: nstr.optional() }),
+  request_id: str,
+});
 
 export const PersonalFinanceCategory = z.object({
   primary: str,

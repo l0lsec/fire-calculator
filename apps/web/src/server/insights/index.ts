@@ -13,6 +13,7 @@ import {
   listAlertState,
   listBudgets,
   listCashMoves,
+  listItems,
   listScheduledBills,
   restoreAlerts,
   setAlertSettings,
@@ -32,6 +33,7 @@ import {
   type RecurringSeries,
 } from "@fire/spending";
 import { z } from "zod";
+import { bankUrl } from "../../lib/bank-url";
 import { chargeFinder } from "../charges";
 import { type ActionResult, checkbox, dollars, parseForm } from "../forms";
 import { deriveHouseholdSpending, todayISO } from "../snapshot";
@@ -53,16 +55,18 @@ export function nextMonthStart(asOf: string): string {
 export { categoryName };
 
 export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
-  const [current, history, accounts, budgetRows, state, settings, billRows, moveRows] = await Promise.all([
-    deriveHouseholdSpending(ctx, nextMonthStart(asOf)),
-    deriveHouseholdSpending(ctx, asOf),
-    listAccounts(ctx.db, ctx.scope),
-    listBudgets(ctx.db, ctx.scope),
-    listAlertState(ctx.db, ctx.scope),
-    getAlertSettings(ctx.db, ctx.scope),
-    listScheduledBills(ctx.db, ctx.scope),
-    listCashMoves(ctx.db, ctx.scope),
-  ]);
+  const [current, history, accounts, budgetRows, state, settings, billRows, moveRows, items] =
+    await Promise.all([
+      deriveHouseholdSpending(ctx, nextMonthStart(asOf)),
+      deriveHouseholdSpending(ctx, asOf),
+      listAccounts(ctx.db, ctx.scope),
+      listBudgets(ctx.db, ctx.scope),
+      listAlertState(ctx.db, ctx.scope),
+      getAlertSettings(ctx.db, ctx.scope),
+      listScheduledBills(ctx.db, ctx.scope),
+      listCashMoves(ctx.db, ctx.scope),
+      listItems(ctx.db, ctx.scope),
+    ]);
   const scheduled = billRows.map((b) => ({
     id: b.id,
     accountId: b.accountId,
@@ -193,6 +197,8 @@ export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
     budgets,
     cash,
     /** Bills added by hand, soonest first, with the next date each is due. */
+    /** Each connected account's bank and its website, for "Open your bank" next to a move. */
+    banks: bankLinks(accounts, items),
     /** Moves the user made to avoid an overdraft, oldest first, and what each saved. */
     moves,
     feesSavedCents: moves.reduce((s, m) => s + m.savedCents, 0),
@@ -217,6 +223,22 @@ export async function loadInsights(ctx: Ctx, asOf: string = todayISO()) {
 }
 
 export type Insights = Awaited<ReturnType<typeof loadInsights>>;
+
+export type BankLink = { name: string; url: string };
+
+/** Account id to its bank's name and website, for accounts whose bank Plaid gave a website for. */
+function bankLinks(
+  accounts: { id: string; itemId: string | null }[],
+  items: { id: string; institutionName: string | null; institutionUrl: string | null }[],
+): Record<string, BankLink> {
+  const out: Record<string, BankLink> = {};
+  for (const a of accounts) {
+    const item = items.find((i) => i.id === a.itemId);
+    const url = bankUrl(item?.institutionUrl);
+    if (item && url) out[a.id] = { name: item.institutionName ?? "your bank", url };
+  }
+  return out;
+}
 
 // ---------- actions ----------
 

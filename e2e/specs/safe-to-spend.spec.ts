@@ -127,6 +127,12 @@ test("an account that would go below zero gets a plan to move money in, and the 
   await expect(plan.getByTestId("move-fees")).toContainText(
     /Avoids about \$[\d,]+ in fees: \d+ charges would come out below \$0, at \$35\.00 each \(a typical bank fee\)/,
   );
+  // The move starts at the bank: a link to its website, opened in a new tab.
+  const bank = plan.getByTestId("move-bank");
+  await expect(bank).toHaveText("Open Fixture Bank (opens in a new tab)");
+  await expect(bank).toHaveAttribute("href", "https://www.fixturebank.example/");
+  await expect(bank).toHaveAttribute("target", "_blank");
+  await expect(bank).toHaveAttribute("rel", "noopener noreferrer");
   await page.getByRole("link", { name: "See the plan to avoid overdraft fees" }).click();
   await expect(page).toHaveURL(/#moves$/);
 
