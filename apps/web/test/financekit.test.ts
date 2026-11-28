@@ -246,6 +246,35 @@ describe("import", () => {
     expect(ids.some((i) => i.endsWith("3"))).toBe(false);
   });
 
+  it("a hold that never settled is left out and removed; a recent one stays", async () => {
+    const ctx = await household();
+    const snap = snapshot();
+    // Apple still reports some card checks from years ago as pending ($0, never posted).
+    snap.transactions.unshift(
+      tx("aaaaaaaa-0000-4000-8000-000000000005", {
+        status: "pending",
+        posted: null,
+        amount: "0",
+        date: "2021-04-20",
+      }),
+      tx("aaaaaaaa-0000-4000-8000-000000000006", { status: "authorized", posted: null, date: "2026-10-20" }),
+      tx("aaaaaaaa-0000-4000-8000-000000000007", { status: "pending", posted: null, date: "2026-10-22" }),
+    );
+    // Rows saved before this rule existed: the oldest hold is the oldest entry the phone sends.
+    const older = snapshot();
+    older.transactions.unshift(snap.transactions[0]!);
+    const before = await applySnapshot(ctx, older, "2021-04-21");
+    expect(before.transactions).toBe(4);
+
+    const r = await applySnapshot(ctx, snap, "2026-11-21");
+    const ids = (await listTransactions(ctx.db, ctx.scope, "2021-01-01", "2026-12-31")).map((x) =>
+      x.plaidTransactionId.slice(-1),
+    );
+    // 30 days before Nov 21 is Oct 22: the Oct 20 hold is stale, the Oct 22 one is not.
+    expect(ids.sort()).toEqual(["1", "2", "3", "7"]);
+    expect(r).toMatchObject({ transactions: 4, removed: 1 });
+  });
+
   it("the bank debit that paid the Apple Card pairs with the card payment and is not spending", async () => {
     const ctx = await household();
     await applySnapshot(ctx, snapshot(), "2026-11-20");

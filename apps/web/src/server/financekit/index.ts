@@ -192,16 +192,21 @@ export async function applySnapshot(ctx: Ctx, snap: Snapshot, asOf: string): Pro
   const rows = snap.transactions.flatMap((t) => {
     const acct = accountIdByFk.get(t.accountId);
     if (!acct) return [];
-    const v = transactionValuesFor(t, acct.kind, acct.id);
+    const v = transactionValuesFor(t, acct.kind, acct.id, asOf);
     return v ? [v] : [];
   });
   await upsertTransactions(ctx.db, ctx.scope, rows);
 
   // Anything from these accounts in the snapshot's date range that the phone no
-  // longer reports was dropped or replaced at Apple: remove it here too.
+  // longer reports (or that is now left out, like a hold that never settled) was
+  // dropped or replaced at Apple: remove it here too. The range is every entry
+  // the phone sent, so a left-out entry at its oldest end is still in it.
   let removed = 0;
-  if (rows.length > 0) {
-    const from = rows.reduce((m, r) => (r.postedDate < m ? r.postedDate : m), rows[0]!.postedDate);
+  const sent = snap.transactions
+    .filter((t) => accountIdByFk.has(t.accountId))
+    .map((t) => (t.posted && t.posted < t.date ? t.posted : t.date));
+  if (sent.length > 0) {
+    const from = sent.reduce((m, d) => (d < m ? d : m));
     const keep = new Set(rows.map((r) => r.plaidTransactionId));
     const ours = new Set([...accountIdByFk.values()].map((a) => a.id));
     const existing = await listTransactions(ctx.db, ctx.scope, from, "9999-12-31");

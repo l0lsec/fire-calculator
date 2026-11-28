@@ -237,13 +237,33 @@ export function debtFieldsFor(snapshot: Snapshot, a: SnapshotAccount): PlaidDebt
   };
 }
 
-/** Booked, pending and authorized transactions; rejected and memo entries are dropped. */
+/**
+ * A hold that has not settled this many days after it was made never will: Apple
+ * keeps reporting some card checks from years ago as pending. Card holds settle
+ * or drop within a few days, so a month is well past any real one.
+ */
+export const STALE_HOLD_DAYS = 30;
+
+/** True for a pending or authorized entry made more than STALE_HOLD_DAYS before asOf. */
+export function isStaleHold(t: SnapshotTransaction, asOf: string): boolean {
+  if (t.status === "booked") return false;
+  const cutoff = new Date(`${asOf}T00:00:00Z`);
+  cutoff.setUTCDate(cutoff.getUTCDate() - STALE_HOLD_DAYS);
+  return t.date < cutoff.toISOString().slice(0, 10);
+}
+
+/**
+ * Booked, pending and authorized transactions. Rejected and memo entries are
+ * dropped, and so are holds that never settled (see STALE_HOLD_DAYS) when asOf is given.
+ */
 export function transactionValuesFor(
   t: SnapshotTransaction,
   kind: SnapshotAccount["kind"],
   accountId: string,
+  asOf?: string,
 ): TransactionValues | null {
   if (t.status === "rejected" || t.status === "memo") return null;
+  if (asOf && isStaleHold(t, asOf)) return null;
   const cents = decimalToCents(t.amount);
   const c = categoryFor(t, kind);
   return {
